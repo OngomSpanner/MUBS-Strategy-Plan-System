@@ -43,7 +43,7 @@ The Strategic Planning System (SPS) is a comprehensive web application built to 
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository_url>
+   git clone https://github.com/OngomSpanner/MUBS-Strategy-Plan-System.git
    cd sps3
    ```
 
