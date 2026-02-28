@@ -39,6 +39,13 @@ export async function PUT(
     const body = await request.json();
     const { full_name, email, role, department, status } = body;
 
+    if (!full_name || !email || !role || !department || !status) {
+      return NextResponse.json(
+        { message: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
     await query({
       query: 'UPDATE users SET full_name = ?, email = ?, role = ?, department = ?, status = ? WHERE id = ?',
       values: [full_name, email, role, department, status, id]

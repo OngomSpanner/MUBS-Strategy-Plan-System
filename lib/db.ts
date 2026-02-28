@@ -12,7 +12,9 @@ const pool = mysql.createPool({
 
 export async function query({ query, values = [] }: { query: string; values?: any[] }) {
   try {
-    const [results] = await pool.execute(query, values);
+    // Map undefined values to null to avoid mysql2 error
+    const processedValues = values.map(v => v === undefined ? null : v);
+    const [results] = await pool.execute(query, processedValues);
     return results;
   } catch (error) {
     console.error('Database query error:', error);

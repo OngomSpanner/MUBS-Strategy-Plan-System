@@ -1,269 +1,174 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import Layout from '@/components/Layout';
-import StatCard from '@/components/StatCard';
-import CreateUserModal from '@/components/Modals/CreateUserModal';
-import CreateActivityModal from '@/components/Modals/CreateActivityModal';
-import axios from 'axios';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
-interface DashboardStats {
-  totalActivities: number;
-  overallProgress: number;
-  totalUsers: number;
-  activeUsers: number;
-  completedActivities: number;
-  onTrackActivities: number;
-  pendingProposals: number;
-  delayedActivities: number;
-}
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-interface UnitPerformance {
-  name: string;
-  progress: number;
-}
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
-interface RecentActivity {
-  icon: string;
-  bgColor: string;
-  iconColor: string;
-  description: string;
-  timestamp: string;
-}
-
-export default function Dashboard() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalActivities: 0,
-    overallProgress: 0,
-    totalUsers: 0,
-    activeUsers: 0,
-    completedActivities: 0,
-    onTrackActivities: 0,
-    pendingProposals: 0,
-    delayedActivities: 0
-  });
-  const [unitPerformance, setUnitPerformance] = useState<UnitPerformance[]>([]);
-  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
-  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
-  const [showCreateActivityModal, setShowCreateActivityModal] = useState(false);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
     try {
-      const response = await axios.get('/api/dashboard/stats');
-      setStats(response.data.stats);
-      setUnitPerformance(response.data.unitPerformance);
-      setRecentActivities(response.data.recentActivities);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      // Simulate authentication check
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      // Basic role-based routing simulation based on email
+      if (email.includes('admin')) {
+        router.push('/admin');
+      } else if (email.includes('staff')) {
+        router.push('/staff');
+      } else if (email.includes('committee')) {
+        router.push('/committee');
+      } else if (email.includes('unit')) {
+        router.push('/unit-head');
+      } else if (email.includes('principal')) {
+        router.push('/principal');
+      } else {
+        router.push('/admin'); // Default fallback
+      }
+    } catch (err) {
+      setError('Invalid email or password');
+      setLoading(false);
     }
   };
 
   return (
-    <Layout>
-      <div className="alert alert-warning alert-strip alert-dismissible fade show mb-4 d-flex align-items-center gap-2" role="alert">
-        <span className="material-symbols-outlined">warning</span>
-        <div>
-          <strong>Attention:</strong> {stats.delayedActivities} strategic activities have exceeded their deadlines.
-          <a href="/tracking" className="alert-link"> Review now →</a>
-        </div>
-        <button type="button" className="btn-close ms-auto" data-bs-dismiss="alert"></button>
-      </div>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #005696 0%, #102a43 100%)', // Brand blue background
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Decorative Brand Colors Background Elements */}
+      <div style={{
+        position: 'absolute', top: '-10%', right: '-5%', width: '400px', height: '400px',
+        background: '#e31837', // brand red
+        borderRadius: '50%', filter: 'blur(100px)', opacity: '0.4'
+      }}></div>
+      <div style={{
+        position: 'absolute', bottom: '-10%', left: '-5%', width: '400px', height: '400px',
+        background: '#ffcd00', // brand yellow
+        borderRadius: '50%', filter: 'blur(100px)', opacity: '0.3'
+      }}></div>
 
-      {/* Stat Cards */}
-      <div className="row g-4 mb-4">
-        <div className="col-12 col-sm-6 col-xl-3">
-          <StatCard
-            icon="assignment"
-            label="Total Activities"
-            value={stats.totalActivities}
-            badge={`${stats.completedActivities} Completed`}
-            badgeIcon="task_alt"
-            color="blue"
-          />
-        </div>
-        <div className="col-12 col-sm-6 col-xl-3">
-          <StatCard
-            icon="analytics"
-            label="Overall Progress"
-            value={`${stats.overallProgress}%`}
-            badge={`${stats.onTrackActivities} On Track`}
-            badgeIcon="trending_up"
-            color="yellow"
-          />
-        </div>
-        <div className="col-12 col-sm-6 col-xl-3">
-          <StatCard
-            icon="group"
-            label="System Users"
-            value={stats.totalUsers}
-            badge={`${stats.activeUsers} Active`}
-            badgeIcon="check_circle"
-            color="green"
-          />
-        </div>
-        <div className="col-12 col-sm-6 col-xl-3">
-          <StatCard
-            icon="schedule"
-            label="Delayed Activities"
-            value={stats.delayedActivities}
-            badge={
-              stats.totalActivities > 0
-                ? `${Math.round((stats.delayedActivities / stats.totalActivities) * 100)}% of total`
-                : '0% of total'
-            }
-            badgeIcon="trending_down"
-            color="red"
-          />
-        </div>
-      </div>
-
-      <div className="row g-4">
-        {/* Quick Actions */}
-        <div className="col-12 col-md-4">
-          <div className="table-card p-0 h-100">
-            <div className="table-card-header">
-              <h5>
-                <span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>
-                  bolt
-                </span>
-                Quick Actions
-              </h5>
-            </div>
-            <div className="p-3 d-flex flex-column gap-2">
-              <button
-                className="btn btn-outline-primary fw-bold text-start d-flex align-items-center gap-2"
-                onClick={() => setShowCreateUserModal(true)}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--mubs-blue)' }}>
-                  person_add
-                </span>
-                Create New User
-              </button>
-              <button
-                className="btn btn-outline-primary fw-bold text-start d-flex align-items-center gap-2"
-                onClick={() => setShowCreateActivityModal(true)}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--mubs-blue)' }}>
-                  add_task
-                </span>
-                Add Strategic Activity
-              </button>
-              <a
-                href="/committee"
-                className="btn btn-outline-warning fw-bold text-start d-flex align-items-center gap-2"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#b45309' }}>
-                  rate_review
-                </span>
-                Review Proposals
-                {stats.pendingProposals > 0 && (
-                  <span className="badge bg-warning text-dark ms-auto">{stats.pendingProposals}</span>
-                )}
-              </a>
-              <a
-                href="/tracking"
-                className="btn btn-outline-danger fw-bold text-start d-flex align-items-center gap-2"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--mubs-red)' }}>
-                  warning
-                </span>
-                View Delayed Activities
-                <span className="badge bg-danger ms-auto">{stats.delayedActivities}</span>
-              </a>
-              <a
-                href="/reports"
-                className="btn btn-outline-success fw-bold text-start d-flex align-items-center gap-2"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#059669' }}>
-                  file_download
-                </span>
-                Export Reports
-              </a>
-            </div>
+      <div
+        className="card shadow-lg border-0"
+        style={{
+          maxWidth: '440px',
+          width: '90%',
+          padding: '2.5rem 2rem',
+          borderRadius: '20px',
+          background: 'rgba(255, 255, 255, 0.98)',
+          backdropFilter: 'blur(20px)',
+          zIndex: 1,
+          boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+        }}
+      >
+        <div className="text-center mb-4">
+          <div className="mb-3 d-flex justify-content-center">
+            <Image
+              src="/logo.png"
+              alt="MUBS Logo"
+              width={100}
+              height={100}
+              style={{ objectFit: 'contain' }}
+              priority
+            />
           </div>
+          <h4 className="fw-bold mb-1" style={{ color: '#005696' }}>Strategy Plan System</h4>
+          <p className="text-muted small mb-0">Sign in to access your dashboard</p>
         </div>
 
-        {/* Unit Performance */}
-        <div className="col-12 col-md-8">
-          <div className="table-card p-0">
-            <div className="table-card-header">
-              <h5>
-                <span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>
-                  corporate_fare
-                </span>
-                Unit Performance Overview
-              </h5>
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => { window.location.href = '/reports'; }}>
-                Full Report
-              </button>
-            </div>
-            <div className="p-4">
-              {unitPerformance.map((unit, index) => (
-                <div className="unit-bar-row" key={index}>
-                  <span className="unit-bar-label">{unit.name}</span>
-                  <div className="unit-bar-track">
-                    <div
-                      className="unit-bar-fill"
-                      style={{
-                        width: `${unit.progress}%`,
-                        background: unit.progress >= 70 ? '#005696' :
-                          unit.progress >= 50 ? '#ffcd00' : '#e31837'
-                      }}
-                    />
-                  </div>
-                  <span className="unit-bar-pct">{unit.progress}%</span>
-                </div>
-              ))}
-            </div>
+        {error && (
+          <div className="alert alert-danger py-2 small d-flex align-items-center gap-2 mb-4" style={{ borderLeft: '4px solid #e31837' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#e31837' }}>error</span>
+            <span className="fw-medium text-dark">{error}</span>
           </div>
-        </div>
+        )}
 
-        {/* Recent Activity Feed */}
-        <div className="col-12">
-          <div className="table-card p-0">
-            <div className="table-card-header">
-              <h5>
-                <span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>
-                  history
-                </span>
-                Recent System Activity
-              </h5>
-            </div>
-            <div className="p-4">
-              {recentActivities.map((activity, index) => (
-                <div className="timeline-item" key={index}>
-                  <div className="timeline-dot" style={{ background: activity.bgColor }}>
-                    <span className="material-symbols-outlined" style={{ color: activity.iconColor }}>
-                      {activity.icon}
-                    </span>
-                  </div>
-                  <div className="fw-bold text-dark" style={{ fontSize: '.88rem' }}>
-                    {activity.description}
-                  </div>
-                  <div className="text-muted" style={{ fontSize: '.75rem' }}>
-                    {activity.timestamp}
-                  </div>
-                </div>
-              ))}
-            </div>
+        <form onSubmit={handleLogin}>
+          <div className="form-floating mb-3">
+            <input
+              type="email"
+              className="form-control"
+              id="email"
+              placeholder="name@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{ borderRadius: '10px', border: '1px solid #ced4da' }}
+            />
+            <label htmlFor="email" className="text-muted">Email address</label>
           </div>
+          <div className="form-floating mb-4">
+            <input
+              type="password"
+              className="form-control"
+              id="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={{ borderRadius: '10px', border: '1px solid #ced4da' }}
+            />
+            <label htmlFor="password" className="text-muted">Password</label>
+          </div>
+
+          <button
+            type="submit"
+            className="btn w-100 py-2 fw-bold text-white d-flex align-items-center justify-content-center gap-2 position-relative overflow-hidden"
+            disabled={loading}
+            style={{
+              borderRadius: '10px',
+              background: 'linear-gradient(90deg, #005696 0%, #007ac3 100%)', // Brand blue gradient
+              border: 'none',
+              height: '52px',
+              transition: 'transform 0.2s',
+              boxShadow: '0 4px 12px rgba(0,86,150,0.3)'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+            onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            {loading ? (
+              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            ) : (
+              <>
+                Sign In <span className="material-symbols-outlined ms-1" style={{ fontSize: '20px' }}>login</span>
+              </>
+            )}
+
+            {/* Subtle Brand Strip on Button */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', display: 'flex' }}>
+              <div style={{ flex: 1, background: '#e31837' /* Red */ }}></div>
+              <div style={{ flex: 1, background: '#ffcd00' /* Yellow */ }}></div>
+              <div style={{ flex: 1, background: '#005696' /* Blue */ }}></div>
+            </div>
+          </button>
+        </form>
+
+        <div className="text-center mt-5">
+          {/* Subtle line with brand colors */}
+          <div className="mx-auto mb-3" style={{ height: '3px', width: '50px', display: 'flex', borderRadius: '4px', overflow: 'hidden' }}>
+            <div style={{ flex: 1, background: '#e31837' }}></div>
+            <div style={{ flex: 1, background: '#ffcd00' }}></div>
+            <div style={{ flex: 1, background: '#005696' }}></div>
+          </div>
+          <small className="text-muted d-block" style={{ fontSize: '0.75rem' }}>
+            &copy; {new Date().getFullYear()} Makerere University Business School.
+          </small>
         </div>
       </div>
-      <CreateUserModal
-        show={showCreateUserModal}
-        onHide={() => setShowCreateUserModal(false)}
-        onUserCreated={fetchDashboardData}
-      />
-      <CreateActivityModal
-        show={showCreateActivityModal}
-        onHide={() => setShowCreateActivityModal(false)}
-        onActivityCreated={fetchDashboardData}
-        mode="create"
-      />
-    </Layout>
+    </div>
   );
 }

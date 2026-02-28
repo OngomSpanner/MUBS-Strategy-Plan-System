@@ -10,6 +10,8 @@ interface Activity {
   unit_id: string | number;
   target_kpi: string;
   status: string;
+  priority?: string;
+  parent_id?: string | number | null;
   progress?: number;
   start_date: string;
   end_date: string;
@@ -30,6 +32,8 @@ const BLANK = {
   unit_id: '',
   target_kpi: '',
   status: 'Not Started',
+  priority: 'Medium',
+  parent_id: '',
   start_date: '',
   end_date: '',
   description: ''
@@ -40,7 +44,28 @@ export default function CreateActivityModal({
 }: CreateActivityModalProps) {
 
   const [formData, setFormData] = useState({ ...BLANK });
+  const [parents, setParents] = useState<Activity[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (show) {
+      fetchParents();
+    }
+  }, [show]);
+
+  const fetchParents = async () => {
+    try {
+      const response = await fetch('/api/activities');
+      if (response.ok) {
+        const data = await response.json();
+        // Only show activities that aren't children themselves (shallow hierarchy)
+        // or just show all but exclude the current one if editing
+        setParents(data.filter((a: Activity) => a.id !== activity?.id));
+      }
+    } catch (error) {
+      console.error('Error fetching parents:', error);
+    }
+  };
 
   // Populate form when editing
   useEffect(() => {
@@ -51,6 +76,8 @@ export default function CreateActivityModal({
         unit_id: String(activity.unit_id ?? ''),
         target_kpi: activity.target_kpi || '',
         status: activity.status || 'Not Started',
+        priority: activity.priority || 'Medium',
+        parent_id: activity.parent_id ? String(activity.parent_id) : '',
         start_date: activity.start_date ? activity.start_date.slice(0, 10) : '',
         end_date: activity.end_date ? activity.end_date.slice(0, 10) : '',
         description: activity.description || ''
@@ -194,6 +221,29 @@ export default function CreateActivityModal({
                     <option>On Track</option>
                     <option>Delayed</option>
                     <option>Completed</option>
+                  </Form.Select>
+                </div>
+                <div className="col-md-6">
+                  <Form.Label className="fw-bold small">Priority Level</Form.Label>
+                  <Form.Select
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                  >
+                    <option>High</option>
+                    <option>Medium</option>
+                    <option>Low</option>
+                  </Form.Select>
+                </div>
+                <div className="col-md-6">
+                  <Form.Label className="fw-bold small">Parent Activity (Optional)</Form.Label>
+                  <Form.Select
+                    value={formData.parent_id}
+                    onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
+                  >
+                    <option value="">No Parent (Standalone)</option>
+                    {parents.map(p => (
+                      <option key={p.id} value={p.id}>{p.title}</option>
+                    ))}
                   </Form.Select>
                 </div>
                 <div className="col-md-6">

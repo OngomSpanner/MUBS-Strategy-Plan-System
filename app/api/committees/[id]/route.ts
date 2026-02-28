@@ -7,11 +7,23 @@ export async function PATCH(
 ) {
     const { id } = await params;
     try {
-        const { status, reviewer_notes } = await request.json();
+        const body = await request.json();
+        const { status, reviewer_notes, implementation_status } = body;
+
+        let queryStr = 'UPDATE committee_proposals SET status = ?, reviewer_notes = ?, reviewed_date = CURDATE()';
+        let values = [status, reviewer_notes ?? null];
+
+        if (implementation_status) {
+            queryStr += ', implementation_status = ?';
+            values.push(implementation_status);
+        }
+
+        queryStr += ' WHERE id = ?';
+        values.push(id);
 
         await query({
-            query: 'UPDATE committee_proposals SET status = ?, reviewer_notes = ?, reviewed_date = CURDATE() WHERE id = ?',
-            values: [status, reviewer_notes ?? null, id]
+            query: queryStr,
+            values: values
         });
 
         return NextResponse.json({ message: 'Proposal updated successfully' });

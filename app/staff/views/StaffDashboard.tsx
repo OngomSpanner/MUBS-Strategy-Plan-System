@@ -1,28 +1,84 @@
 "use client";
 
-import React from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import axios from 'axios';
+import StatCard from '@/components/StatCard';
+
+interface DashboardData {
+    stats: {
+        assigned: number;
+        overdue: number;
+        inProgress: number;
+        completed: number;
+    };
+    deadlines: any[];
+    feedback: any[];
+}
 
 export default function StaffDashboard() {
+    const [data, setData] = useState<DashboardData | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const response = await axios.get('/api/dashboard/staff');
+                setData(response.data);
+            } catch (error) {
+                console.error('Error fetching staff dashboard data:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="d-flex justify-content-center align-items-center vh-100">
+                <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        );
+    }
+
+    const stats = data?.stats || { assigned: 0, overdue: 0, inProgress: 0, completed: 0 };
+    const deadlines = data?.deadlines || [];
+    const feedbackList = data?.feedback || [];
+
     return (
         <div className="content-area w-100">
             {/* Welcome banner */}
-            <div className="p-4 mb-4 rounded-3" style={{ background: 'linear-gradient(135deg, var(--mubs-blue) 0%, var(--mubs-navy) 100%)', border: '1px solid rgba(255,255,255,.1)' }}>
+            <div className="p-4 mb-4 rounded-4" style={{
+                background: 'linear-gradient(135deg, var(--mubs-blue) 0%, var(--mubs-navy) 100%)',
+                border: '1px solid rgba(255,255,255,.1)',
+                boxShadow: '0 8px 32px rgba(0, 86, 150, 0.15)'
+            }}>
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
                     <div>
-                        <div className="d-flex align-items-center gap-2 mb-1">
-                            <div className="profile-avatar text-white fw-bold d-flex align-items-center justify-content-center" style={{ width: '48px', height: '48px', fontSize: '1rem', borderRadius: '10px', background: 'linear-gradient(135deg,#7c3aed,#4f46e5)' }}>JA</div>
+                        <div className="d-flex align-items-center gap-3 mb-1">
+                            <div className="profile-avatar text-white fw-bold d-flex align-items-center justify-content-center" style={{ width: '56px', height: '56px', fontSize: '1.2rem', borderRadius: '14px', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.2)' }}>JA</div>
                             <div>
-                                <div className="fw-black text-white" style={{ fontSize: '1.15rem' }}>Welcome back, Jane 👋</div>
-                                <div className="text-white-50" style={{ fontSize: '.82rem' }}>Lecturer · Faculty of Computing · FY 2024–25</div>
+                                <div className="fw-black text-white" style={{ fontSize: '1.25rem' }}>Welcome back, Jane 👋</div>
+                                <div className="text-white-50" style={{ fontSize: '.85rem' }}>Lecturer · Faculty of Computing · FY 2024–25</div>
                             </div>
                         </div>
                     </div>
                     <div className="text-end">
-                        <div className="text-white-50" style={{ fontSize: '.72rem', textTransform: 'uppercase', letterSpacing: '.1em' }}>Overall Progress</div>
-                        <div className="fw-black text-white" style={{ fontSize: '2rem', lineHeight: '1' }}>72%</div>
-                        <div style={{ width: '140px', height: '8px', background: 'rgba(255,255,255,.2)', borderRadius: '99px', overflow: 'hidden', marginTop: '4px' }}>
-                            <div style={{ width: '72%', height: '100%', background: 'var(--mubs-yellow)', borderRadius: '99px' }}></div>
+                        <div className="text-white-50" style={{ fontSize: '.72rem', textTransform: 'uppercase', letterSpacing: '.1em' }}>My Completion Rate</div>
+                        <div className="fw-black text-white" style={{ fontSize: '2.5rem', lineHeight: '1' }}>
+                            {stats.assigned > 0 ? Math.round((stats.completed / stats.assigned) * 100) : 0}%
+                        </div>
+                        <div style={{ width: '160px', height: '8px', background: 'rgba(255,255,255,.2)', borderRadius: '99px', overflow: 'hidden', marginTop: '6px' }}>
+                            <div style={{
+                                width: `${stats.assigned > 0 ? (stats.completed / stats.assigned) * 100 : 0}%`,
+                                height: '100%',
+                                background: 'var(--mubs-yellow)',
+                                borderRadius: '99px',
+                                transition: 'width 1s ease-in-out'
+                            }}></div>
                         </div>
                     </div>
                 </div>
@@ -31,116 +87,174 @@ export default function StaffDashboard() {
             {/* Stat cards */}
             <div className="row g-4 mb-4">
                 <div className="col-12 col-sm-6 col-xl-3">
-                    <div className="stat-card" style={{ borderLeftColor: 'var(--mubs-blue)' }}>
-                        <div className="d-flex justify-content-between align-items-start mb-3">
-                            <div className="stat-icon" style={{ background: '#eff6ff' }}><span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)' }}>task_alt</span></div>
-                            <span className="stat-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)' }}>Active</span>
-                        </div>
-                        <div className="stat-label">My Tasks</div>
-                        <div className="stat-value">9</div>
-                        <div className="stat-sub">Across 3 activities</div>
-                    </div>
+                    <StatCard
+                        icon="inventory"
+                        label="Total Tasks"
+                        value={stats.assigned}
+                        badge={`${stats.completed} Completed`}
+                        badgeIcon="task_alt"
+                        color="blue"
+                    />
                 </div>
                 <div className="col-12 col-sm-6 col-xl-3">
-                    <div className="stat-card" style={{ borderLeftColor: 'var(--mubs-red)' }}>
-                        <div className="d-flex justify-content-between align-items-start mb-3">
-                            <div className="stat-icon" style={{ background: '#fff1f2' }}><span className="material-symbols-outlined" style={{ color: 'var(--mubs-red)' }}>event_busy</span></div>
-                            <span className="stat-badge" style={{ background: '#fff1f2', color: 'var(--mubs-red)' }}>⚠ Urgent</span>
-                        </div>
-                        <div className="stat-label">Overdue</div>
-                        <div className="stat-value">1</div>
-                        <div className="stat-sub">Needs immediate action</div>
-                    </div>
+                    <StatCard
+                        icon="pending_actions"
+                        label="In Progress"
+                        value={stats.inProgress}
+                        badge="Active"
+                        badgeIcon="sync"
+                        color="yellow"
+                    />
                 </div>
                 <div className="col-12 col-sm-6 col-xl-3">
-                    <div className="stat-card" style={{ borderLeftColor: 'var(--mubs-yellow)' }}>
-                        <div className="d-flex justify-content-between align-items-start mb-3">
-                            <div className="stat-icon" style={{ background: '#fffbeb' }}><span className="material-symbols-outlined" style={{ color: '#b45309' }}>upload_file</span></div>
-                            <span className="stat-badge" style={{ background: '#fffbeb', color: '#b45309' }}>Pending</span>
-                        </div>
-                        <div className="stat-label">Reports Submitted</div>
-                        <div className="stat-value">6</div>
-                        <div className="stat-sub">2 awaiting review</div>
-                    </div>
+                    <StatCard
+                        icon="notification_important"
+                        label="Overdue"
+                        value={stats.overdue}
+                        badge="Requires Action"
+                        badgeIcon="warning"
+                        color="red"
+                    />
                 </div>
                 <div className="col-12 col-sm-6 col-xl-3">
-                    <div className="stat-card" style={{ borderLeftColor: '#10b981' }}>
-                        <div className="d-flex justify-content-between align-items-start mb-3">
-                            <div className="stat-icon" style={{ background: '#ecfdf5' }}><span className="material-symbols-outlined" style={{ color: '#059669' }}>star</span></div>
-                            <span className="stat-badge" style={{ background: '#ecfdf5', color: '#059669' }}>Latest</span>
+                    <StatCard
+                        icon="grade"
+                        label="Average Score"
+                        value="4.5"
+                        badge="Excellent"
+                        badgeIcon="verified"
+                        color="green"
+                    />
+                </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="row g-3 mb-4">
+                <div className="col-12 col-md-4">
+                    <Link href="/staff?pg=submit" className="text-decoration-none h-100">
+                        <div className="quick-action-card p-3 d-flex align-items-center gap-3 bg-white border rounded-4 shadow-sm h-100" style={{ transition: 'all 0.2s', cursor: 'pointer' }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.1)'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}>
+                            <div className="icon-box d-flex align-items-center justify-content-center" style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(0, 86, 150, 0.1)' }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)', fontSize: '24px' }}>add_task</span>
+                            </div>
+                            <div>
+                                <div className="fw-black text-dark" style={{ fontSize: '1rem' }}>Submit Report</div>
+                                <div className="text-muted small">Update progress on tasks</div>
+                            </div>
                         </div>
-                        <div className="stat-label">Avg. Evaluation Score</div>
-                        <div className="stat-value">4.2<span style={{ fontSize: '1rem', color: '#64748b' }}>/5</span></div>
-                        <div className="stat-sub">Good performance</div>
-                    </div>
+                    </Link>
+                </div>
+                <div className="col-12 col-md-4">
+                    <Link href="/staff?pg=tasks" className="text-decoration-none h-100">
+                        <div className="quick-action-card p-3 d-flex align-items-center gap-3 bg-white border rounded-4 shadow-sm h-100" style={{ transition: 'all 0.2s', cursor: 'pointer' }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.1)'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}>
+                            <div className="icon-box d-flex align-items-center justify-content-center" style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(16, 185, 129, 0.1)' }}>
+                                <span className="material-symbols-outlined" style={{ color: '#10b981', fontSize: '24px' }}>list_alt</span>
+                            </div>
+                            <div>
+                                <div className="fw-black text-dark" style={{ fontSize: '1rem' }}>View My Tasks</div>
+                                <div className="text-muted small">Manage assigned activities</div>
+                            </div>
+                        </div>
+                    </Link>
+                </div>
+                <div className="col-12 col-md-4">
+                    <Link href="/staff?pg=deadlines" className="text-decoration-none h-100">
+                        <div className="quick-action-card p-3 d-flex align-items-center gap-3 bg-white border rounded-4 shadow-sm h-100" style={{ transition: 'all 0.2s', cursor: 'pointer' }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.1)'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}>
+                            <div className="icon-box d-flex align-items-center justify-content-center" style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(227, 24, 55, 0.1)' }}>
+                                <span className="material-symbols-outlined" style={{ color: 'var(--mubs-red)', fontSize: '24px' }}>event_note</span>
+                            </div>
+                            <div>
+                                <div className="fw-black text-dark" style={{ fontSize: '1rem' }}>Check Deadlines</div>
+                                <div className="text-muted small">Review upcoming due dates</div>
+                            </div>
+                        </div>
+                    </Link>
                 </div>
             </div>
 
             <div className="row g-4">
                 {/* Task quick view */}
                 <div className="col-12 col-lg-7">
-                    <div className="table-card mb-4">
-                        <div className="table-card-header">
-                            <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>task_alt</span>My Active Tasks</h5>
-                            <Link href="/staff?pg=tasks" className="btn btn-sm btn-outline-secondary">View All</Link>
+                    <div className="table-card mb-4" style={{
+                        background: 'rgba(255, 255, 255, 0.9)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(0, 86, 150, 0.1)',
+                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
+                        borderRadius: '20px'
+                    }}>
+                        <div className="table-card-header p-4" style={{ borderBottom: '1px solid rgba(0, 0, 0, 0.05)' }}>
+                            <div className="d-flex align-items-center gap-3">
+                                <div style={{
+                                    width: '36px', height: '36px',
+                                    background: 'linear-gradient(135deg, var(--mubs-blue), var(--mubs-navy))',
+                                    borderRadius: '10px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 4px 12px rgba(0, 86, 150, 0.2)'
+                                }}>
+                                    <span className="material-symbols-outlined text-white" style={{ fontSize: '22px' }}>rocket_launch</span>
+                                </div>
+                                <h5 className="mb-0 fw-black" style={{ color: 'var(--mubs-navy)', fontSize: '1.1rem' }}>Today's Focus Areas</h5>
+                            </div>
+                            <Link href="/staff?pg=tasks" className="btn btn-sm btn-link text-decoration-none fw-black p-0" style={{ fontSize: '.8rem', color: 'var(--mubs-blue)' }}>View All <span className="material-symbols-outlined align-middle" style={{ fontSize: '16px' }}>arrow_forward</span></Link>
                         </div>
-                        <div className="p-3">
-                            <div className="task-row overdue">
-                                <div className="d-flex align-items-start gap-3 flex-wrap">
-                                    <div className="activity-icon"><span className="material-symbols-outlined">description</span></div>
-                                    <div className="flex-fill">
-                                        <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.9rem' }}>Write Tender for Computers</div>
-                                            <span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Overdue</span>
+                        <div className="p-4">
+                            {deadlines.slice(0, 2).map((item, index) => (
+                                <div key={index} className="focus-premium-card mb-3 p-3 rounded-4" style={{
+                                    background: item.status === 'Delayed' ? 'linear-gradient(to right, #fff5f5, #ffffff)' : 'linear-gradient(to right, #f0f9ff, #ffffff)',
+                                    border: item.status === 'Delayed' ? '1px solid #fee2e2' : '1px solid #e0f2fe',
+                                    transition: 'all 0.3s ease'
+                                }}>
+                                    <div className="d-flex align-items-start gap-3">
+                                        <div className="activity-icon-premium" style={{
+                                            width: '56px', height: '56px',
+                                            borderRadius: '16px',
+                                            background: item.status === 'Delayed' ? '#fee2e2' : '#e0f2fe',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            boxShadow: item.status === 'Delayed' ? '0 4px 12px rgba(239, 68, 68, 0.1)' : '0 4px 12px rgba(14, 165, 233, 0.1)'
+                                        }}>
+                                            <span className="material-symbols-outlined" style={{
+                                                color: item.status === 'Delayed' ? '#dc2626' : '#0284c7',
+                                                fontSize: '28px'
+                                            }}>{item.status === 'Delayed' ? 'warning' : 'task_alt'}</span>
                                         </div>
-                                        <div className="text-muted" style={{ fontSize: '.75rem' }}>Computer Lab Upgrade · Due <span style={{ color: 'var(--mubs-red)', fontWeight: '700' }}>15 Apr 2025</span> (5 days late)</div>
-                                        <div className="mt-2"><div className="progress-bar-custom"><div className="progress-bar-fill" style={{ width: '25%', background: 'var(--mubs-red)' }}></div></div></div>
-                                    </div>
-                                    <Link href="/staff?pg=submit" className="btn btn-sm fw-bold text-white" style={{ background: 'var(--mubs-blue)', fontSize: '.78rem' }}>Submit Now</Link>
-                                </div>
-                            </div>
-                            <div className="task-row">
-                                <div className="d-flex align-items-start gap-3 flex-wrap">
-                                    <div className="activity-icon"><span className="material-symbols-outlined">settings_ethernet</span></div>
-                                    <div className="flex-fill">
-                                        <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.9rem' }}>Configure LAN Switches</div>
-                                            <span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>In Progress</span>
+                                        <div className="flex-fill">
+                                            <div className="d-flex align-items-center justify-content-between mb-1">
+                                                <div className="fw-black text-dark text-truncate" style={{ fontSize: '1rem', maxWidth: '250px' }}>{item.title}</div>
+                                                <span className="badge rounded-pill" style={{
+                                                    background: item.status === 'Delayed' ? '#fee2e2' : '#dcfce7',
+                                                    color: item.status === 'Delayed' ? '#b91c1c' : '#15803d',
+                                                    fontSize: '.65rem', fontWeight: '800'
+                                                }}>{item.status.toUpperCase()}</span>
+                                            </div>
+                                            <div className="text-muted mb-2 text-truncate" style={{ fontSize: '.8rem' }}>{item.description}</div>
+                                            <div className="progress-container mb-1" style={{ height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
+                                                <div style={{
+                                                    width: `${item.progress}%`,
+                                                    height: '100%',
+                                                    background: item.status === 'Delayed' ? 'linear-gradient(to right, #ef4444, #f87171)' : 'linear-gradient(to right, #0ea5e9, #38bdf8)',
+                                                    borderRadius: '4px'
+                                                }}></div>
+                                            </div>
+                                            <div className="d-flex justify-content-between align-items-center mt-2">
+                                                <span className="text-muted fw-bold" style={{ fontSize: '.7rem' }}>
+                                                    <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: '14px' }}>calendar_today</span>
+                                                    Due {new Date(item.dueDate).toLocaleDateString()}
+                                                </span>
+                                                <Link href="/staff?pg=submit" className="btn btn-sm fw-black text-white px-3 shadow-sm align-middle" style={{
+                                                    background: item.status === 'Delayed' ? 'var(--mubs-red)' : 'var(--mubs-blue)',
+                                                    borderRadius: '8px',
+                                                    fontSize: '.75rem'
+                                                }}>UPDATE</Link>
+                                            </div>
                                         </div>
-                                        <div className="text-muted" style={{ fontSize: '.75rem' }}>Digital Learning Infra. · Due 21 Apr 2025</div>
-                                        <div className="mt-2"><div className="progress-bar-custom"><div className="progress-bar-fill" style={{ width: '40%', background: 'var(--mubs-yellow)' }}></div></div></div>
                                     </div>
-                                    <Link href="/staff?pg=submit" className="btn btn-sm btn-outline-primary fw-bold" style={{ fontSize: '.78rem' }}>Update</Link>
                                 </div>
-                            </div>
-                            <div className="task-row pending-review">
-                                <div className="d-flex align-items-start gap-3 flex-wrap">
-                                    <div className="activity-icon"><span className="material-symbols-outlined">inbox</span></div>
-                                    <div className="flex-fill">
-                                        <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.9rem' }}>Lab Setup Report — Phase 1</div>
-                                            <span className="status-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)' }}>Submitted · Under Review</span>
-                                        </div>
-                                        <div className="text-muted" style={{ fontSize: '.75rem' }}>Digital Learning Infra. · Submitted Today</div>
-                                        <div className="mt-2"><div className="progress-bar-custom"><div className="progress-bar-fill" style={{ width: '100%', background: '#93c5fd' }}></div></div></div>
-                                    </div>
-                                    <Link href="/staff?pg=submissions" className="btn btn-sm btn-outline-secondary fw-bold" style={{ fontSize: '.78rem' }}>View</Link>
+                            ))}
+                            {deadlines.length === 0 && (
+                                <div className="text-center py-4">
+                                    <span className="material-symbols-outlined text-muted" style={{ fontSize: '48px' }}>eco</span>
+                                    <p className="text-muted mt-2">No focus areas for today. You're all caught up!</p>
                                 </div>
-                            </div>
-                            <div className="task-row completed">
-                                <div className="d-flex align-items-start gap-3 flex-wrap">
-                                    <div className="activity-icon"><span className="material-symbols-outlined">receipt_long</span></div>
-                                    <div className="flex-fill">
-                                        <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.9rem', textDecoration: 'line-through' }}>Prepare Budget Estimate</div>
-                                            <span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Completed · Score: 5/5</span>
-                                        </div>
-                                        <div className="text-muted" style={{ fontSize: '.75rem' }}>Digital Learning Infra. · Completed 08 Apr</div>
-                                        <div className="mt-2"><div className="progress-bar-custom"><div className="progress-bar-fill" style={{ width: '100%', background: '#10b981' }}></div></div></div>
-                                    </div>
-                                    <Link href="/staff?pg=feedback" className="btn btn-sm btn-outline-secondary fw-bold" style={{ fontSize: '.78rem' }}>Feedback</Link>
-                                </div>
-                            </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -148,67 +262,98 @@ export default function StaffDashboard() {
                 {/* Right column */}
                 <div className="col-12 col-lg-5 d-flex flex-column gap-4">
                     {/* Upcoming deadlines */}
-                    <div className="table-card">
-                        <div className="table-card-header">
-                            <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-red)' }}>schedule</span>Upcoming Deadlines</h5>
-                            <Link href="/staff?pg=deadlines" className="btn btn-sm btn-outline-secondary">All</Link>
+                    <div className="table-card" style={{
+                        background: 'rgba(255, 255, 255, 0.9)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(227, 24, 55, 0.05)',
+                        borderRadius: '20px'
+                    }}>
+                        <div className="table-card-header p-4">
+                            <div className="d-flex align-items-center gap-3">
+                                <div style={{
+                                    width: '36px', height: '36px',
+                                    background: 'rgba(227, 24, 55, 0.1)',
+                                    borderRadius: '10px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <span className="material-symbols-outlined" style={{ color: 'var(--mubs-red)', fontSize: '22px' }}>timer</span>
+                                </div>
+                                <h5 className="mb-0 fw-black" style={{ color: 'var(--mubs-navy)', fontSize: '1.1rem' }}>Upcoming Deadlines</h5>
+                            </div>
+                            <Link href="/staff?pg=deadlines" className="btn btn-sm btn-link text-decoration-none fw-black p-0" style={{ fontSize: '.8rem', color: 'var(--mubs-red)' }}>All</Link>
                         </div>
-                        <div className="p-3">
-                            <div className="deadline-banner" style={{ background: '#fff1f2' }}>
-                                <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: '0' }}>
-                                    <span className="material-symbols-outlined" style={{ color: 'var(--mubs-red)' }}>event_busy</span>
-                                </div>
-                                <div className="flex-fill">
-                                    <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Write Tender for Computers</div>
-                                    <div className="text-muted" style={{ fontSize: '.73rem' }}>Was due 15 Apr</div>
-                                </div>
-                                <span className="deadline-pill" style={{ background: '#fee2e2', color: '#b91c1c' }}>5d late</span>
-                            </div>
-                            <div className="deadline-banner" style={{ background: '#fffbeb' }}>
-                                <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: '0' }}>
-                                    <span className="material-symbols-outlined" style={{ color: '#b45309' }}>schedule</span>
-                                </div>
-                                <div className="flex-fill">
-                                    <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Configure LAN Switches</div>
-                                    <div className="text-muted" style={{ fontSize: '.73rem' }}>Due 21 Apr 2025</div>
-                                </div>
-                                <span className="deadline-pill" style={{ background: '#fef9c3', color: '#a16207' }}>2 days</span>
-                            </div>
-                            <div className="deadline-banner" style={{ background: '#f8fafc' }}>
-                                <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: '0' }}>
-                                    <span className="material-symbols-outlined" style={{ color: '#475569' }}>event</span>
-                                </div>
-                                <div className="flex-fill">
-                                    <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Procurement Report</div>
-                                    <div className="text-muted" style={{ fontSize: '.73rem' }}>Due 25 Apr 2025</div>
-                                </div>
-                                <span className="deadline-pill" style={{ background: '#e2e8f0', color: '#475569' }}>6 days</span>
+                        <div className="p-4 pt-0">
+                            <div className="d-flex flex-column gap-3">
+                                {deadlines.slice(0, 3).map((item, index) => (
+                                    <div key={index} className="deadline-tile p-3 rounded-4 shadow-sm" style={{ background: 'white', border: '1px solid #f1f5f9', transition: 'transform 0.2s' }}>
+                                        <div className="d-flex justify-content-between mb-2">
+                                            <span className="badge" style={{
+                                                background: item.daysLeft <= 2 ? '#fee2e2' : '#fef3c7',
+                                                color: item.daysLeft <= 2 ? '#b91c1c' : '#92400e',
+                                                fontSize: '.6rem', fontWeight: '900'
+                                            }}>{item.daysLeft <= 0 ? 'OVERDUE' : (item.daysLeft <= 2 ? 'URGENT' : 'SOON')}</span>
+                                            <span style={{
+                                                fontSize: '.7rem',
+                                                color: item.daysLeft <= 2 ? '#b91c1c' : '#64748b',
+                                                fontWeight: '800'
+                                            }}>{item.daysLeft <= 0 ? Math.abs(item.daysLeft) + ' DAYS LATE' : 'IN ' + item.daysLeft + ' DAYS'}</span>
+                                        </div>
+                                        <div className="fw-black text-dark mb-1 text-truncate" style={{ fontSize: '.9rem' }}>{item.title}</div>
+                                        <div className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: '.75rem' }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>calendar_today</span>
+                                            Due {new Date(item.dueDate).toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
 
                     {/* Latest feedback */}
-                    <div className="table-card">
-                        <div className="table-card-header">
-                            <h5><span className="material-symbols-outlined me-2" style={{ color: '#059669' }}>rate_review</span>Latest Feedback</h5>
-                            <Link href="/staff?pg=feedback" className="btn btn-sm btn-outline-secondary">All</Link>
+                    <div className="table-card overflow-hidden" style={{
+                        background: 'rgba(255, 255, 255, 0.9)',
+                        backdropFilter: 'blur(10px)',
+                        border: '1px solid rgba(16, 185, 129, 0.05)',
+                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
+                        borderRadius: '20px'
+                    }}>
+                        <div className="table-card-header p-4">
+                            <div className="d-flex align-items-center gap-3">
+                                <div style={{
+                                    width: '36px', height: '36px',
+                                    background: 'rgba(16, 185, 129, 0.1)',
+                                    borderRadius: '10px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <span className="material-symbols-outlined" style={{ color: '#059669', fontSize: '22px' }}>auto_awesome</span>
+                                </div>
+                                <h5 className="mb-0 fw-black" style={{ color: 'var(--mubs-navy)', fontSize: '1.1rem' }}>Latest Feedback</h5>
+                            </div>
+                            <Link href="/staff?pg=feedback" className="btn btn-sm btn-link text-decoration-none fw-black p-0" style={{ fontSize: '.8rem', color: '#059669' }}>View All</Link>
                         </div>
-                        <div className="p-3">
-                            <div className="p-3 rounded mb-2" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                                <div className="d-flex align-items-center justify-content-between mb-1">
-                                    <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Budget Estimate</div>
-                                    <span className="score-badge" style={{ background: '#dcfce7', color: '#15803d' }}>★★★★★ 5/5</span>
+                        <div className="p-4 pt-0">
+                            {feedbackList.map((feedback, index) => (
+                                <div key={index} className="feedback-premium-card p-3 rounded-4 mb-3" style={{
+                                    background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)',
+                                    border: '1px solid #dcfce7',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                                }}>
+                                    <div className="d-flex align-items-center justify-content-between mb-2">
+                                        <div className="fw-black text-dark text-truncate" style={{ fontSize: '.9rem', maxWidth: '180px' }}>{feedback.task}</div>
+                                        <div className="d-flex align-items-center gap-1">
+                                            <span className="fw-black" style={{ color: '#15803d', fontSize: '1rem' }}>{feedback.score.toFixed(1)}</span>
+                                            <span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#fbbf24', fontVariationSettings: "'FILL' 1" }}>star</span>
+                                        </div>
+                                    </div>
+                                    <p className="mb-2" style={{ fontSize: '.8rem', color: '#166534', lineHeight: '1.5', opacity: 0.8 }}>
+                                        Keep up the standard. Progress is visible.
+                                    </p>
+                                    <div className="d-flex align-items-center justify-content-between border-top pt-2 mt-2" style={{ borderColor: 'rgba(21, 128, 61, 0.1)' }}>
+                                        <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontSize: '.6rem' }}>{feedback.status}</span>
+                                        <span className="text-muted" style={{ fontSize: '.65rem' }}>{feedback.date}</span>
+                                    </div>
                                 </div>
-                                <p style={{ fontSize: '.78rem', color: '#166534', margin: '0' }}>Excellent work. Very thorough cost analysis — no revisions needed.</p>
-                                <div className="text-muted mt-1" style={{ fontSize: '.7rem' }}>From: Dr. A. Ssekandi · 08 Apr</div>
-                            </div>
-                            <div className="p-3 rounded" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                <div className="d-flex align-items-center justify-content-between mb-1">
-                                    <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Lab Setup Report</div>
-                                    <span className="status-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)', fontSize: '.62rem' }}>Under Review</span>
-                                </div>
-                                <p style={{ fontSize: '.78rem', color: '#64748b', margin: '0', fontStyle: 'italic' }}>Awaiting HOD review...</p>
-                            </div>
+                            ))}
                         </div>
                     </div>
                 </div>

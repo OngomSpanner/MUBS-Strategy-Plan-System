@@ -18,12 +18,12 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen, onLogoutClick }: 
     : (pathname.substring(1) || 'dashboard');
 
   const adminMenuItems = [
-    { key: 'dashboard', href: '/', icon: 'dashboard', label: 'Dashboard' },
-    { key: 'strategic', href: '/strategic', icon: 'track_changes', label: 'Strategic Activities' },
-    { key: 'committee', href: '/committee', icon: 'groups', label: 'Committee Activities' },
-    { key: 'tracking', href: '/tracking', icon: 'monitoring', label: 'System Tracking' },
-    { key: 'users', href: '/users', icon: 'manage_accounts', label: 'User & Role Mgmt' },
-    { key: 'reports', href: '/reports', icon: 'bar_chart', label: 'Reports & Monitoring' },
+    { key: 'dashboard', href: '/admin?pg=dashboard', icon: 'dashboard', label: 'Dashboard' },
+    { key: 'strategic', href: '/admin?pg=strategic', icon: 'track_changes', label: 'Strategic Activities' },
+    { key: 'committee', href: '/admin?pg=committee', icon: 'groups', label: 'Committee Activities' },
+    { key: 'tracking', href: '/admin?pg=tracking', icon: 'monitoring', label: 'Activity Tracking' },
+    { key: 'users', href: '/admin?pg=users', icon: 'manage_accounts', label: 'User & Role Mgmt' },
+    { key: 'reports', href: '/admin?pg=reports', icon: 'bar_chart', label: 'Reports & Monitoring' },
   ];
 
   const principalMenuItems = [
@@ -52,6 +52,16 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen, onLogoutClick }: 
     { key: 'feedback', href: '/staff?pg=feedback', icon: 'rate_review', label: 'Feedback & Scores' },
   ];
 
+  const commMenuItems = [
+    { key: 'dashboard', href: '/comm?pg=dashboard', icon: 'dashboard', label: 'Dashboard' },
+    { key: 'propose', href: '/comm?pg=propose', icon: 'post_add', label: 'New Proposal' },
+    { key: 'my-proposals', href: '/comm?pg=my-proposals', icon: 'list_alt', label: 'All Proposals' },
+    { key: 'pending', href: '/comm?pg=pending', icon: 'pending_actions', label: 'Pending Review' },
+    { key: 'approved', href: '/comm?pg=approved', icon: 'check_circle', label: 'Approved' },
+    { key: 'rejected', href: '/comm?pg=rejected', icon: 'cancel', label: 'Rejected' },
+    { key: 'notifications', href: '/comm?pg=notifications', icon: 'notifications', label: 'Notifications' },
+  ];
+
   let menuItems = adminMenuItems; // Default to admin
 
   if (pathname.startsWith('/principal')) {
@@ -60,6 +70,8 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen, onLogoutClick }: 
     menuItems = unitHeadMenuItems;
   } else if (pathname.startsWith('/staff')) {
     menuItems = staffMenuItems;
+  } else if (pathname.startsWith('/comm')) {
+    menuItems = commMenuItems;
   }
 
   const isActive = (key: string) => currentKey === key;

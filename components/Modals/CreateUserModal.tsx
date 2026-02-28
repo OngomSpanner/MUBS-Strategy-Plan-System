@@ -26,7 +26,7 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
-      
+
       if (response.ok) {
         onUserCreated();
         onHide();
@@ -74,19 +74,28 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
                 required
               />
             </div>
-            <div className="col-md-6">
-              <Form.Label className="fw-bold small">Assign Role</Form.Label>
-              <Form.Select
-                value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-              >
-                <option>Super Admin</option>
-                <option>Manager</option>
-                <option>Unit Head</option>
-                <option>Staff</option>
-                <option>Committee Member</option>
-                <option>Viewer</option>
-              </Form.Select>
+            <div className="col-12">
+              <Form.Label className="fw-bold small">Assign Roles (Select all that apply)</Form.Label>
+              <div className="d-flex flex-wrap gap-2 p-2 border rounded bg-light">
+                {['System Administrator', 'Strategy Manager', 'Unit Head', 'HOD', 'Committee Member', 'Staff'].map(r => (
+                  <div key={r} className="form-check">
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id={`role-${r}`}
+                      checked={formData.role.split(',').map(x => x.trim()).includes(r)}
+                      onChange={e => {
+                        const roles = formData.role.split(',').map(x => x.trim()).filter(Boolean);
+                        const newRoles = e.target.checked
+                          ? [...roles, r]
+                          : roles.filter(x => x !== r);
+                        setFormData({ ...formData, role: newRoles.join(', ') });
+                      }}
+                    />
+                    <label className="form-check-label small" htmlFor={`role-${r}`}>{r}</label>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="col-md-6">
               <Form.Label className="fw-bold small">Department / Unit</Form.Label>

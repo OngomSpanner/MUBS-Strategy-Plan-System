@@ -3,7 +3,6 @@
 import { useState, Suspense } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-import LogoutModal from './Modals/LogoutModal';
 import { usePathname, useSearchParams } from 'next/navigation';
 
 function LayoutContent({ children, sidebarOpen, setSidebarOpen }: any) {
@@ -67,7 +66,14 @@ function LayoutContent({ children, sidebarOpen, setSidebarOpen }: any) {
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showLogout, setShowLogout] = useState(false);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    sessionStorage.clear();
+    document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    window.location.href = '/';
+  };
 
   return (
     <div className="app-shell">
@@ -75,7 +81,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <Sidebar
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
-          onLogoutClick={() => setShowLogout(true)}
+          onLogoutClick={handleLogout}
         />
         <div className="main-area">
           <LayoutContent sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}>
@@ -83,8 +89,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </LayoutContent>
         </div>
       </Suspense>
-
-      <LogoutModal show={showLogout} onHide={() => setShowLogout(false)} />
     </div>
   );
 }

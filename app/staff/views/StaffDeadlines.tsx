@@ -1,8 +1,58 @@
 "use client";
 
-import React from 'react';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+
+interface Task {
+    id: number;
+    title: string;
+    unit_name: string;
+    dueDate: string;
+    status: string;
+    daysLeft: number;
+}
+
+interface Stats {
+    assigned: number;
+    overdue: number;
+    inProgress: number;
+    completed: number;
+}
 
 export default function StaffDeadlines() {
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [stats, setStats] = useState<Stats>({ assigned: 0, overdue: 0, inProgress: 0, completed: 0 });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchTasks = async () => {
+            try {
+                const response = await axios.get('/api/staff/tasks');
+                setTasks(response.data.tasks);
+                setStats(response.data.stats);
+            } catch (error) {
+                console.error('Error fetching staff deadlines:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchTasks();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="d-flex justify-content-center align-items-center vh-100">
+                <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        );
+    }
+
+    const onTimePercentage = stats.assigned > 0 ? Math.round(((stats.assigned - stats.overdue) / stats.assigned) * 100) : 100;
+    const strokeDasharray = 295;
+    const strokeDashoffset = strokeDasharray - (strokeDasharray * onTimePercentage) / 100;
+
     return (
         <div className="content-area w-100">
             <div className="row g-4">
@@ -10,66 +60,59 @@ export default function StaffDeadlines() {
                     <div className="table-card">
                         <div className="table-card-header">
                             <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-red)' }}>schedule</span>All Deadlines</h5>
-                            <select className="form-select form-select-sm" style={{ width: '140px' }} defaultValue="All Tasks">
-                                <option value="All Tasks">All Tasks</option>
-                                <option value="Overdue">Overdue</option>
-                                <option value="This Week">This Week</option>
-                                <option value="This Month">This Month</option>
-                            </select>
                         </div>
                         <div className="table-responsive">
                             <table className="table mb-0">
-                                <thead><tr><th>Task</th><th>Activity</th><th>Due Date</th><th>Status</th><th>Days Left</th></tr></thead>
+                                <thead>
+                                    <tr>
+                                        <th>Task</th>
+                                        <th>Unit</th>
+                                        <th>Due Date</th>
+                                        <th>Status</th>
+                                        <th>Timeline</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
-                                    <tr style={{ background: '#fff1f2' }}>
-                                        <td><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Write Tender for Computers</div></td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Computer Lab Upgrade</td>
-                                        <td style={{ fontSize: '.82rem', fontWeight: '700', color: 'var(--mubs-red)' }}>15 Apr 2025</td>
-                                        <td><span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Overdue</span></td>
-                                        <td><span className="deadline-pill" style={{ background: '#fee2e2', color: '#b91c1c' }}>5d late</span></td>
-                                    </tr>
-                                    <tr style={{ background: '#fffbeb' }}>
-                                        <td><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Configure LAN Switches</div></td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Digital Learning Infra.</td>
-                                        <td style={{ fontSize: '.82rem', fontWeight: '700', color: '#b45309' }}>21 Apr 2025</td>
-                                        <td><span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>In Progress</span></td>
-                                        <td><span className="deadline-pill" style={{ background: '#fef9c3', color: '#a16207' }}>2 days</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Procure Network Switches</div></td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Digital Learning Infra.</td>
-                                        <td style={{ fontSize: '.82rem' }}>20 Apr 2025</td>
-                                        <td><span className="status-badge" style={{ background: '#f1f5f9', color: '#475569' }}>Not Started</span></td>
-                                        <td><span className="deadline-pill" style={{ background: '#e2e8f0', color: '#475569' }}>1 day</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Draft Lab Safety Guidelines</div></td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Digital Learning Infra.</td>
-                                        <td style={{ fontSize: '.82rem' }}>22 Apr 2025</td>
-                                        <td><span className="status-badge" style={{ background: '#f1f5f9', color: '#475569' }}>Not Started</span></td>
-                                        <td><span className="deadline-pill" style={{ background: '#e2e8f0', color: '#475569' }}>3 days</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Inventory Checklist</div></td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Digital Learning Infra.</td>
-                                        <td style={{ fontSize: '.82rem' }}>25 Apr 2025</td>
-                                        <td><span className="status-badge" style={{ background: '#f1f5f9', color: '#475569' }}>Not Started</span></td>
-                                        <td><span className="deadline-pill" style={{ background: '#e2e8f0', color: '#475569' }}>6 days</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Industry Contacts Register</div></td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Industry Attachment</td>
-                                        <td style={{ fontSize: '.82rem' }}>30 Apr 2025</td>
-                                        <td><span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>In Progress</span></td>
-                                        <td><span className="deadline-pill" style={{ background: '#e2e8f0', color: '#475569' }}>11 days</span></td>
-                                    </tr>
-                                    <tr style={{ background: '#f0fdf4' }}>
-                                        <td><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Prepare Budget Estimate</div></td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Digital Learning Infra.</td>
-                                        <td style={{ fontSize: '.82rem', color: '#059669' }}>08 Apr 2025</td>
-                                        <td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Completed</span></td>
-                                        <td><span className="deadline-pill" style={{ background: '#dcfce7', color: '#15803d' }}>Done</span></td>
-                                    </tr>
+                                    {tasks.length > 0 ? (
+                                        tasks.map(task => {
+                                            const isOverdue = task.daysLeft < 0 && task.status !== 'Completed';
+                                            const isDueSoon = task.daysLeft >= 0 && task.daysLeft <= 3 && task.status !== 'Completed';
+
+                                            return (
+                                                <tr key={task.id} style={{ background: isOverdue ? '#fff1f2' : (isDueSoon ? '#fffbeb' : 'transparent') }}>
+                                                    <td><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>{task.title}</div></td>
+                                                    <td style={{ fontSize: '.78rem', color: '#64748b' }}>{task.unit_name || 'N/A'}</td>
+                                                    <td style={{
+                                                        fontSize: '.82rem',
+                                                        fontWeight: '700',
+                                                        color: isOverdue ? 'var(--mubs-red)' : (isDueSoon ? '#b45309' : '#0f172a')
+                                                    }}>
+                                                        {new Date(task.dueDate).toLocaleDateString()}
+                                                    </td>
+                                                    <td>
+                                                        <span className="status-badge" style={{
+                                                            background: isOverdue ? '#fee2e2' : (task.status === 'Completed' ? '#dcfce7' : '#f1f5f9'),
+                                                            color: isOverdue ? '#b91c1c' : (task.status === 'Completed' ? '#15803d' : '#475569')
+                                                        }}>
+                                                            {isOverdue ? 'Overdue' : task.status}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span className="deadline-pill" style={{
+                                                            background: isOverdue ? '#fee2e2' : (task.status === 'Completed' ? '#dcfce7' : '#e2e8f0'),
+                                                            color: isOverdue ? '#b91c1c' : (task.status === 'Completed' ? '#15803d' : '#475569')
+                                                        }}>
+                                                            {task.status === 'Completed' ? 'Done' : (task.daysLeft < 0 ? `${Math.abs(task.daysLeft)}d late` : `${task.daysLeft} days`)}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={5} className="text-center p-4 text-muted">No deadlines found.</td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -82,34 +125,40 @@ export default function StaffDeadlines() {
                         <div className="table-card-header"><h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>insights</span>Deadline Summary</h5></div>
                         <div className="p-4">
                             <div className="text-center mb-4">
-                                <div className="perf-ring mb-2">
+                                <div className="perf-ring mb-2" style={{ position: 'relative', display: 'inline-block' }}>
                                     <svg width="110" height="110" viewBox="0 0 110 110">
                                         <circle cx="55" cy="55" r="47" fill="none" stroke="#e2e8f0" strokeWidth="10" />
-                                        <circle cx="55" cy="55" r="47" fill="none" stroke="#10b981" strokeWidth="10" strokeDasharray="295" strokeDashoffset="73" strokeLinecap="round" />
+                                        <circle
+                                            cx="55" cy="55" r="47"
+                                            fill="none" stroke={onTimePercentage >= 80 ? "#10b981" : (onTimePercentage >= 50 ? "var(--mubs-yellow)" : "var(--mubs-red)")}
+                                            strokeWidth="10"
+                                            strokeDasharray={strokeDasharray}
+                                            strokeDashoffset={strokeDashoffset}
+                                            strokeLinecap="round"
+                                            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                                        />
                                     </svg>
-                                    <div className="perf-ring-label" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-                                        <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0f172a' }}>75%</div>
-                                        <div style={{ fontSize: '.65rem', color: '#64748b', fontWeight: '700' }}>On Time</div>
+                                    <div className="perf-ring-label" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0f172a' }}>{onTimePercentage}%</div>
+                                        <div style={{ fontSize: '.65rem', color: '#64748b', fontWeight: '700' }}>Compliance</div>
                                     </div>
                                 </div>
-                                <div style={{ fontSize: '.8rem', color: '#64748b' }}>3 of 4 active tasks on track</div>
+                                <div style={{ fontSize: '.8rem', color: '#64748b' }}>
+                                    {stats.assigned - stats.overdue} of {stats.assigned} tasks on track
+                                </div>
                             </div>
                             <div className="d-flex flex-column gap-2">
                                 <div className="d-flex justify-content-between align-items-center p-2 rounded" style={{ background: '#fff1f2' }}>
-                                    <span style={{ fontSize: '.82rem', fontWeight: '700', color: '#b91c1c' }}>Overdue</span>
-                                    <span className="fw-black" style={{ color: 'var(--mubs-red)' }}>1</span>
+                                    <span style={{ fontSize: '.82rem', fontWeight: '700', color: '#b91c1c' }}>Overdue Tasks</span>
+                                    <span className="fw-black" style={{ color: 'var(--mubs-red)' }}>{stats.overdue}</span>
                                 </div>
                                 <div className="d-flex justify-content-between align-items-center p-2 rounded" style={{ background: '#fffbeb' }}>
-                                    <span style={{ fontSize: '.82rem', fontWeight: '700', color: '#a16207' }}>Due This Week</span>
-                                    <span className="fw-black" style={{ color: '#b45309' }}>3</span>
-                                </div>
-                                <div className="d-flex justify-content-between align-items-center p-2 rounded" style={{ background: '#f8fafc' }}>
-                                    <span style={{ fontSize: '.82rem', fontWeight: '700', color: '#475569' }}>Later This Month</span>
-                                    <span className="fw-black" style={{ color: '#475569' }}>2</span>
+                                    <span style={{ fontSize: '.82rem', fontWeight: '700', color: '#a16207' }}>In Progress</span>
+                                    <span className="fw-black" style={{ color: '#b45309' }}>{stats.inProgress}</span>
                                 </div>
                                 <div className="d-flex justify-content-between align-items-center p-2 rounded" style={{ background: '#f0fdf4' }}>
                                     <span style={{ fontSize: '.82rem', fontWeight: '700', color: '#15803d' }}>Completed</span>
-                                    <span className="fw-black" style={{ color: '#059669' }}>4</span>
+                                    <span className="fw-black" style={{ color: '#059669' }}>{stats.completed}</span>
                                 </div>
                             </div>
                         </div>

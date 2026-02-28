@@ -1,37 +1,124 @@
 'use client';
-import React from 'react';
+
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import StatCard from '@/components/StatCard';
+
+interface Activity {
+    id: number;
+    title: string;
+    pillar: string;
+    target_kpi: string;
+    status: string;
+    progress: number;
+    end_date: string;
+    unit_name: string;
+    total_tasks: number;
+    completed_tasks: number;
+}
+
+interface ActivityData {
+    activities: Activity[];
+    stats: {
+        total: number;
+        onTrack: number;
+        inProgress: number;
+        delayed: number;
+    };
+}
 
 export default function UnitStrategicActivities() {
+    const [data, setData] = useState<ActivityData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All Statuses');
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const response = await axios.get('/api/unit-head/activities');
+                setData(response.data);
+            } catch (error) {
+                console.error('Error fetching activities:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    if (loading || !data) {
+        return (
+            <div className="d-flex justify-content-center align-items-center vh-100">
+                <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        );
+    }
+
+    const filteredActivities = data.activities.filter(a => {
+        const matchesSearch = a.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (a.pillar && a.pillar.toLowerCase().includes(searchTerm.toLowerCase()));
+        const matchesStatus = statusFilter === 'All Statuses' || a.status === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+
+    const formatDate = (dateStr: string) => {
+        if (!dateStr) return 'TBD';
+        return new Date(dateStr).toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+        });
+    };
+
     return (
         <div id="page-activities" className="page-section active-page">
-            <div className="row g-3 mb-4">
-                <div className="col-6 col-sm-3">
-                    <div className="stat-card text-center" style={{ borderLeftColor: 'var(--mubs-blue)', padding: '1rem' }}>
-                        <div className="stat-value" style={{ fontSize: '1.8rem' }}>24</div>
-                        <div className="stat-label">Assigned</div>
-                    </div>
+            <div className="row g-4 mb-4">
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="assignment"
+                        label="Total Activities"
+                        value={data.stats.total}
+                        badge="Assigned"
+                        badgeIcon="info"
+                        color="blue"
+                    />
                 </div>
-                <div className="col-6 col-sm-3">
-                    <div className="stat-card text-center" style={{ borderLeftColor: '#10b981', padding: '1rem' }}>
-                        <div className="stat-value" style={{ fontSize: '1.8rem', color: '#059669' }}>18</div>
-                        <div className="stat-label">On Track</div>
-                    </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="check_circle"
+                        label="On Track"
+                        value={data.stats.onTrack}
+                        badge="Healthy"
+                        badgeIcon="done_all"
+                        color="green"
+                    />
                 </div>
-                <div className="col-6 col-sm-3">
-                    <div className="stat-card text-center" style={{ borderLeftColor: 'var(--mubs-yellow)', padding: '1rem' }}>
-                        <div className="stat-value" style={{ fontSize: '1.8rem', color: '#b45309' }}>5</div>
-                        <div className="stat-label">In Progress</div>
-                    </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="pending"
+                        label="In Progress"
+                        value={data.stats.inProgress}
+                        badge="Active"
+                        badgeIcon="trending_up"
+                        color="yellow"
+                    />
                 </div>
-                <div className="col-6 col-sm-3">
-                    <div className="stat-card text-center" style={{ borderLeftColor: 'var(--mubs-red)', padding: '1rem' }}>
-                        <div className="stat-value" style={{ fontSize: '1.8rem', color: 'var(--mubs-red)' }}>1</div>
-                        <div className="stat-label">Delayed</div>
-                    </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="warning"
+                        label="Delayed"
+                        value={data.stats.delayed}
+                        badge="Attention"
+                        badgeIcon="error"
+                        color="red"
+                    />
                 </div>
             </div>
 
-            <div className="table-card">
+            <div className="table-card shadow-sm">
                 <div className="table-card-header">
                     <h5>
                         <span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>track_changes</span>
@@ -39,182 +126,122 @@ export default function UnitStrategicActivities() {
                     </h5>
                     <div className="d-flex gap-2 flex-wrap">
                         <div className="input-group input-group-sm" style={{ width: '190px' }}>
-                            <span className="input-group-text bg-white">
-                                <span className="material-symbols-outlined" style={{ fontSize: '15px', color: '#64748b' }}>search</span>
+                            <span className="input-group-text bg-white border-end-0">
+                                <span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#64748b' }}>search</span>
                             </span>
-                            <input type="text" className="form-control" placeholder="Search..." />
+                            <input
+                                type="text"
+                                className="form-control border-start-0 ps-0"
+                                placeholder="Search activities..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
                         </div>
-                        <select className="form-select form-select-sm" style={{ width: '130px' }} defaultValue="All Statuses">
+                        <select
+                            className="form-select form-select-sm"
+                            style={{ width: '140px' }}
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                        >
                             <option>All Statuses</option>
                             <option>On Track</option>
                             <option>In Progress</option>
                             <option>Delayed</option>
                             <option>Completed</option>
+                            <option>Not Started</option>
                         </select>
                     </div>
                 </div>
                 <div className="table-responsive">
-                    <table className="table mb-0">
-                        <thead>
+                    <table className="table mb-0 align-middle">
+                        <thead className="bg-light">
                             <tr>
-                                <th>Activity</th>
+                                <th className="ps-4">Activity</th>
                                 <th>Pillar</th>
                                 <th>Target / KPI</th>
                                 <th>Deadline</th>
                                 <th>Tasks</th>
                                 <th>Progress</th>
                                 <th>Status</th>
-                                <th></th>
+                                <th className="pe-4"></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td>
-                                    <div className="d-flex align-items-center gap-2">
-                                        <div className="activity-icon"><span className="material-symbols-outlined">laptop</span></div>
-                                        <div>
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Digital Learning Infrastructure</div>
-                                            <div className="text-muted" style={{ fontSize: '.72rem' }}>Assigned by: Super Admin</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)', fontSize: '.62rem' }}>Infrastructure</span></td>
-                                <td style={{ fontSize: '.8rem' }}>4 Labs upgraded</td>
-                                <td style={{ fontSize: '.8rem' }}>30 Jun 2025</td>
-                                <td style={{ fontSize: '.83rem' }}><span className="fw-bold">4</span>/5</td>
-                                <td style={{ minWidth: '110px' }}>
-                                    <div className="progress-bar-custom">
-                                        <div className="progress-bar-fill" style={{ width: '78%', background: '#005696' }}></div>
-                                    </div>
-                                    <span style={{ fontSize: '.72rem', color: '#64748b' }}>78%</span>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>On Track</span></td>
-                                <td>
-                                    <button className="btn btn-xs btn-outline-primary py-0 px-2" style={{ fontSize: '.75rem' }}>
-                                        <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>add_task</span> Tasks
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    <div className="d-flex align-items-center gap-2">
-                                        <div className="activity-icon"><span className="material-symbols-outlined">code</span></div>
-                                        <div>
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Software Dev Curriculum Update</div>
-                                            <div className="text-muted" style={{ fontSize: '.72rem' }}>Assigned by: Super Admin</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#fdf2f8', color: '#9333ea', fontSize: '.62rem' }}>Teaching</span></td>
-                                <td style={{ fontSize: '.8rem' }}>3 modules revised</td>
-                                <td style={{ fontSize: '.8rem' }}>15 May 2025</td>
-                                <td style={{ fontSize: '.83rem' }}><span className="fw-bold">4</span>/4</td>
-                                <td style={{ minWidth: '110px' }}>
-                                    <div className="progress-bar-custom">
-                                        <div className="progress-bar-fill" style={{ width: '95%', background: '#10b981' }}></div>
-                                    </div>
-                                    <span style={{ fontSize: '.72rem', color: '#64748b' }}>95%</span>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>On Track</span></td>
-                                <td>
-                                    <button className="btn btn-xs btn-outline-primary py-0 px-2" style={{ fontSize: '.75rem' }}>
-                                        <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>add_task</span> Tasks
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    <div className="d-flex align-items-center gap-2">
-                                        <div className="activity-icon"><span className="material-symbols-outlined">school</span></div>
-                                        <div>
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Industry Attachment Programme</div>
-                                            <div className="text-muted" style={{ fontSize: '.72rem' }}>Assigned by: Super Admin</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#ecfdf5', color: '#059669', fontSize: '.62rem' }}>Partnerships</span></td>
-                                <td style={{ fontSize: '.8rem' }}>50 students placed</td>
-                                <td style={{ fontSize: '.8rem' }}>01 Aug 2025</td>
-                                <td style={{ fontSize: '.83rem' }}><span className="fw-bold">2</span>/6</td>
-                                <td style={{ minWidth: '110px' }}>
-                                    <div className="progress-bar-custom">
-                                        <div className="progress-bar-fill" style={{ width: '38%', background: '#ffcd00' }}></div>
-                                    </div>
-                                    <span style={{ fontSize: '.72rem', color: '#64748b' }}>38%</span>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>In Progress</span></td>
-                                <td>
-                                    <button className="btn btn-xs btn-outline-primary py-0 px-2" style={{ fontSize: '.75rem' }}>
-                                        <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>add_task</span> Tasks
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    <div className="d-flex align-items-center gap-2">
-                                        <div className="activity-icon"><span className="material-symbols-outlined">computer</span></div>
-                                        <div>
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Computer Lab Upgrade — Phase 2</div>
-                                            <div className="text-muted" style={{ fontSize: '.72rem', color: 'var(--mubs-red)' }}>⚠ OVERDUE</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)', fontSize: '.62rem' }}>Infrastructure</span></td>
-                                <td style={{ fontSize: '.8rem' }}>2 labs refurbished</td>
-                                <td style={{ fontSize: '.8rem', color: 'var(--mubs-red)', fontWeight: 700 }}>30 Apr 2025</td>
-                                <td style={{ fontSize: '.83rem' }}><span className="fw-bold">1</span>/4</td>
-                                <td style={{ minWidth: '110px' }}>
-                                    <div className="progress-bar-custom">
-                                        <div className="progress-bar-fill" style={{ width: '20%', background: '#e31837' }}></div>
-                                    </div>
-                                    <span style={{ fontSize: '.72rem', color: '#64748b' }}>20%</span>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Delayed</span></td>
-                                <td>
-                                    <button className="btn btn-xs btn-outline-primary py-0 px-2" style={{ fontSize: '.75rem' }}>
-                                        <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>add_task</span> Tasks
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    <div className="d-flex align-items-center gap-2">
-                                        <div className="activity-icon"><span className="material-symbols-outlined">science</span></div>
-                                        <div>
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Final Year Project Coordination</div>
-                                            <div className="text-muted" style={{ fontSize: '.72rem' }}>Assigned by: Super Admin</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#fdf2f8', color: '#9333ea', fontSize: '.62rem' }}>Teaching</span></td>
-                                <td style={{ fontSize: '.8rem' }}>120 projects supervised</td>
-                                <td style={{ fontSize: '.8rem' }}>30 Sep 2025</td>
-                                <td style={{ fontSize: '.83rem' }}><span className="fw-bold">0</span>/5</td>
-                                <td style={{ minWidth: '110px' }}>
-                                    <div className="progress-bar-custom">
-                                        <div className="progress-bar-fill" style={{ width: '10%', background: '#94a3b8' }}></div>
-                                    </div>
-                                    <span style={{ fontSize: '.72rem', color: '#64748b' }}>10%</span>
-                                </td>
-                                <td><span className="status-badge" style={{ background: '#f1f5f9', color: '#475569' }}>Not Started</span></td>
-                                <td>
-                                    <button className="btn btn-xs btn-outline-primary py-0 px-2" style={{ fontSize: '.75rem' }}>
-                                        <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>add_task</span> Tasks
-                                    </button>
-                                </td>
-                            </tr>
+                            {filteredActivities.length === 0 ? (
+                                <tr>
+                                    <td colSpan={8} className="text-center py-5 text-muted">
+                                        No activities found matching your criteria.
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredActivities.map((a) => (
+                                    <tr key={a.id}>
+                                        <td className="ps-4">
+                                            <div className="d-flex align-items-center gap-3">
+                                                <div className="activity-icon-rounded" style={{
+                                                    width: '36px',
+                                                    height: '36px',
+                                                    borderRadius: '10px',
+                                                    background: '#f1f5f9',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    color: 'var(--mubs-blue)'
+                                                }}>
+                                                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                                                        {a.pillar?.toLowerCase().includes('infra') ? 'laptop' :
+                                                            a.pillar?.toLowerCase().includes('teaching') ? 'school' : 'description'}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>{a.title}</div>
+                                                    <div className="text-muted small">ID: #{a.id}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span className="status-badge" style={{
+                                                background: a.pillar === 'Infrastructure' ? '#eff6ff' : (a.pillar === 'Teaching' ? '#fdf2f8' : '#f0fdf4'),
+                                                color: a.pillar === 'Infrastructure' ? '#1d4ed8' : (a.pillar === 'Teaching' ? '#9333ea' : '#15803d'),
+                                                fontSize: '0.7rem'
+                                            }}>{a.pillar || 'Uncategorized'}</span>
+                                        </td>
+                                        <td className="small" style={{ fontSize: '.8rem' }}>{a.target_kpi}</td>
+                                        <td className="small" style={{ fontSize: '.8rem' }}>{formatDate(a.end_date)}</td>
+                                        <td className="small" style={{ fontSize: '.8rem' }}><span className="fw-bold text-primary">{a.completed_tasks}</span>/{a.total_tasks}</td>
+                                        <td style={{ minWidth: '120px' }}>
+                                            <div className="d-flex align-items-center gap-2">
+                                                <div className="progress w-100" style={{ height: '6px', borderRadius: '10px' }}>
+                                                    <div className="progress-bar" style={{
+                                                        width: `${a.progress}%`,
+                                                        background: a.progress > 70 ? '#10b981' : (a.progress > 30 ? '#f59e0b' : '#3b82f6'),
+                                                        borderRadius: '10px'
+                                                    }}></div>
+                                                </div>
+                                                <span className="small fw-bold" style={{ fontSize: '.75rem' }}>{a.progress}%</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span className="status-badge" style={{
+                                                background: a.status === 'On Track' ? '#dcfce7' : (a.status === 'In Progress' ? '#fef9c3' : (a.status === 'Delayed' ? '#fee2e2' : '#f1f5f9')),
+                                                color: a.status === 'On Track' ? '#15803d' : (a.status === 'In Progress' ? '#a16207' : (a.status === 'Delayed' ? '#b91c1c' : '#475569')),
+                                                fontSize: '0.7rem'
+                                            }}>{a.status}</span>
+                                        </td>
+                                        <td className="pe-4 text-end">
+                                            <button className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 fw-bold" style={{ fontSize: '.75rem' }}>
+                                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add_task</span>
+                                                <span>Tasks</span>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
-                <div className="table-card-footer">
-                    <span className="footer-label">Showing 5 of 24 activities</span>
-                    <div className="d-flex gap-1">
-                        <button className="page-btn" disabled>‹</button>
-                        <button className="page-btn active">1</button>
-                        <button className="page-btn">2</button>
-                        <button className="page-btn">3</button>
-                        <button className="page-btn">›</button>
-                    </div>
+                <div className="table-card-footer" style={{ padding: '1rem 1.5rem', borderTop: '1px solid #f1f5f9' }}>
+                    <span className="footer-label" style={{ fontSize: '.8rem', color: '#64748b' }}>Showing {filteredActivities.length} of {data.stats.total} activities</span>
                 </div>
             </div>
         </div>

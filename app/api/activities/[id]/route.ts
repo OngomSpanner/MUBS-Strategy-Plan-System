@@ -36,16 +36,21 @@ export async function PUT(
   const { id } = await params;
   try {
     const body = await request.json();
-    const { title, pillar, unit_id, target_kpi, status, progress, start_date, end_date, description } = body;
+    const { title, pillar, unit_id, target_kpi, status, priority, parent_id, progress, start_date, end_date, description } = body;
 
     await query({
       query: `
         UPDATE strategic_activities 
         SET title = ?, pillar = ?, unit_id = ?, target_kpi = ?, 
-            status = ?, progress = ?, start_date = ?, end_date = ?, description = ?
+            status = ?, priority = ?, parent_id = ?, progress = ?, 
+            start_date = ?, end_date = ?, description = ?
         WHERE id = ?
       `,
-      values: [title, pillar, unit_id, target_kpi, status, progress ?? 0, start_date, end_date, description, id]
+      values: [
+        title, pillar, unit_id, target_kpi,
+        status, priority || 'Medium', parent_id || null,
+        progress ?? 0, start_date, end_date, description, id
+      ]
     });
 
     return NextResponse.json({ message: 'Activity updated successfully' });

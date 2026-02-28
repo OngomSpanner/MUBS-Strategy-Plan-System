@@ -1,8 +1,73 @@
 'use client';
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
+interface UnitPerformance {
+    label: string;
+    value: number;
+}
+
+interface StaffPerformance {
+    name: string;
+    unit: string;
+    totalActivities: number;
+    completed: number;
+    rate: number;
+}
+
+interface AnalyticsData {
+    unitPerformance: UnitPerformance[];
+    institutionAverage: number;
+    statusSplit: Array<{ status: string; count: number }>;
+    complianceDistribution: {
+        compliant: number;
+        watch: number;
+        critical: number;
+    };
+    staffPerformance: StaffPerformance[];
+}
 
 export default function PerformanceAnalytics() {
+    const [data, setData] = useState<AnalyticsData | null>(null);
+    const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'unit' | 'compliance' | 'staff'>('unit');
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const response = await axios.get('/api/principal/analytics');
+                setData(response.data);
+            } catch (error) {
+                console.error('Error fetching analytics data:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    if (loading || !data) {
+        return (
+            <div className="d-flex justify-content-center align-items-center vh-100">
+                <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        );
+    }
+
+    const { unitPerformance, institutionAverage, statusSplit, complianceDistribution, staffPerformance } = data;
+
+    const totalActivities = statusSplit.reduce((acc, curr) => acc + curr.count, 0) || 1;
+    const onTrackCount = statusSplit.find(s => s.status === 'On Track')?.count || 0;
+    const completedCount = statusSplit.find(s => s.status === 'Completed')?.count || 0;
+    const inProgressCount = statusSplit.find(s => s.status === 'In Progress')?.count || 0;
+    const delayedCount = statusSplit.find(s => s.status === 'Delayed')?.count || 0;
+
+    const onTrackPct = Math.round(((onTrackCount + completedCount) / totalActivities) * 100);
+    const inProgressPct = Math.round((inProgressCount / totalActivities) * 100);
+    const delayedPct = Math.round((delayedCount / totalActivities) * 100);
 
     return (
         <div id="page-analytics" className="page-section active-page">
@@ -12,8 +77,8 @@ export default function PerformanceAnalytics() {
                     <button
                         className={`nav-link fw-bold ${activeTab === 'unit' ? 'active' : ''}`}
                         style={{
-                            background: activeTab === 'unit' ? 'var(--mubs-blue)' : 'rgba(255,255,255,.1)',
-                            color: activeTab === 'unit' ? '#fff' : '#bfdbfe',
+                            background: activeTab === 'unit' ? 'var(--mubs-blue)' : 'rgba(255,255,255,.05)',
+                            color: activeTab === 'unit' ? '#fff' : '#475569',
                             borderRadius: '8px',
                             fontSize: '.83rem'
                         }}
@@ -26,8 +91,8 @@ export default function PerformanceAnalytics() {
                     <button
                         className={`nav-link fw-bold ${activeTab === 'compliance' ? 'active' : ''}`}
                         style={{
-                            background: activeTab === 'compliance' ? 'var(--mubs-blue)' : 'rgba(255,255,255,.1)',
-                            color: activeTab === 'compliance' ? '#fff' : '#bfdbfe',
+                            background: activeTab === 'compliance' ? 'var(--mubs-blue)' : 'rgba(255,255,255,.05)',
+                            color: activeTab === 'compliance' ? '#fff' : '#475569',
                             borderRadius: '8px',
                             fontSize: '.83rem'
                         }}
@@ -40,8 +105,8 @@ export default function PerformanceAnalytics() {
                     <button
                         className={`nav-link fw-bold ${activeTab === 'staff' ? 'active' : ''}`}
                         style={{
-                            background: activeTab === 'staff' ? 'var(--mubs-blue)' : 'rgba(255,255,255,.1)',
-                            color: activeTab === 'staff' ? '#fff' : '#bfdbfe',
+                            background: activeTab === 'staff' ? 'var(--mubs-blue)' : 'rgba(255,255,255,.05)',
+                            color: activeTab === 'staff' ? '#fff' : '#475569',
                             borderRadius: '8px',
                             fontSize: '.83rem'
                         }}
@@ -57,109 +122,83 @@ export default function PerformanceAnalytics() {
                 <div id="tab-unit" className="analytics-tab">
                     <div className="row g-4">
                         <div className="col-12 col-lg-8">
-                            <div className="table-card">
-                                <div className="table-card-header">
-                                    <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>bar_chart</span>Unit Performance Comparison</h5>
-                                    <select className="form-select form-select-sm" style={{ width: '140px' }} defaultValue="All Pillars">
-                                        <option>All Pillars</option>
-                                        <option>Teaching</option>
-                                        <option>Research</option>
-                                        <option>Governance</option>
-                                    </select>
+                            <div className="table-card bg-white rounded-3 shadow-sm border p-0">
+                                <div className="p-4 border-bottom d-flex align-items-center justify-content-between">
+                                    <h5 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '1.1rem', fontWeight: 800 }}>
+                                        <span className="material-symbols-outlined text-primary">bar_chart</span>
+                                        Unit Performance Comparison
+                                    </h5>
                                 </div>
                                 <div className="p-4">
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">Library Unit</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '88%', background: '#10b981' }}>88%</div></div>
-                                        <span className="compare-bar-pct">88%</span>
-                                    </div>
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">Faculty of Computing</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '82%', background: '#10b981' }}>82%</div></div>
-                                        <span className="compare-bar-pct">82%</span>
-                                    </div>
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">Faculty of Commerce</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '74%', background: '#22c55e' }}>74%</div></div>
-                                        <span className="compare-bar-pct">74%</span>
-                                    </div>
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">Faculty of Management</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '70%', background: '#84cc16' }}>70%</div></div>
-                                        <span className="compare-bar-pct">70%</span>
-                                    </div>
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">School of Grad Studies</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '68%', background: '#ffcd00' }}>68%</div></div>
-                                        <span className="compare-bar-pct">68%</span>
-                                    </div>
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">Dean of Students</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '62%', background: '#fb923c' }}>62%</div></div>
-                                        <span className="compare-bar-pct">62%</span>
-                                    </div>
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">HR Department</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '55%', background: '#fb923c' }}>55%</div></div>
-                                        <span className="compare-bar-pct">55%</span>
-                                    </div>
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">Finance &amp; Admin</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '41%', background: '#ef4444' }}>41%</div></div>
-                                        <span className="compare-bar-pct">41%</span>
-                                    </div>
-                                    <div className="compare-bar-wrap">
-                                        <span className="compare-bar-label">Research &amp; Innovation</span>
-                                        <div className="compare-bar-track"><div className="compare-bar-fill" style={{ width: '29%', background: '#e31837' }}>29%</div></div>
-                                        <span className="compare-bar-pct">29%</span>
-                                    </div>
-                                    {/* Average line indicator */}
-                                    <div className="mt-3 pt-3 border-top">
-                                        <div className="d-flex align-items-center justify-content-between">
-                                            <span style={{ fontSize: '.78rem', color: '#64748b', fontWeight: 600 }}>Institution Average</span>
-                                            <span className="fw-bold" style={{ color: 'var(--mubs-blue)', fontSize: '.9rem' }}>67%</span>
+                                    {unitPerformance.map((unit, idx) => (
+                                        <div key={idx} className="mb-3">
+                                            <div className="d-flex justify-content-between mb-1">
+                                                <span style={{ fontSize: '.85rem', fontWeight: 700, color: '#334155' }}>{unit.label}</span>
+                                                <span style={{ fontSize: '.85rem', fontWeight: 800, color: '#1e293b' }}>{unit.value}%</span>
+                                            </div>
+                                            <div className="progress" style={{ height: '10px', borderRadius: '5px', background: '#f1f5f9' }}>
+                                                <div className="progress-bar" style={{
+                                                    width: `${unit.value}%`,
+                                                    background: unit.value >= 75 ? '#10b981' : (unit.value >= 50 ? '#ffcd00' : '#ef4444'),
+                                                    borderRadius: '5px'
+                                                }}></div>
+                                            </div>
                                         </div>
-                                        <div className="gauge-bar mt-1"><div className="gauge-fill" style={{ width: '67%', background: 'var(--mubs-blue)' }}></div></div>
+                                    ))}
+
+                                    <div className="mt-4 pt-3 border-top">
+                                        <div className="d-flex align-items-center justify-content-between">
+                                            <span style={{ fontSize: '.85rem', color: '#64748b', fontWeight: 700 }}>Institution Average</span>
+                                            <span className="fw-bold" style={{ color: 'var(--mubs-blue)', fontSize: '1.1rem' }}>{institutionAverage}%</span>
+                                        </div>
+                                        <div className="progress mt-2" style={{ height: '6px', borderRadius: '3px', background: '#f1f5f9' }}>
+                                            <div className="progress-bar" style={{ width: `${institutionAverage}%`, background: 'var(--mubs-blue)' }}></div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Donut rings */}
                         <div className="col-12 col-lg-4 d-flex flex-column gap-4">
-                            <div className="table-card">
-                                <div className="table-card-header"><h5 style={{ fontSize: '.88rem' }}>Activity Status Split</h5></div>
-                                <div className="p-4 d-flex align-items-center justify-content-center gap-4">
-                                    <div className="ring-wrap">
-                                        <svg width="130" height="130" viewBox="0 0 130 130">
-                                            {/* Background circle */}
-                                            <circle cx="65" cy="65" r="52" fill="none" stroke="#e2e8f0" strokeWidth="14" />
-                                            {/* On track (96/148 = 65%) */}
-                                            <circle cx="65" cy="65" r="52" fill="none" stroke="#10b981" strokeWidth="14" strokeDasharray="213 114" strokeLinecap="round" />
-                                            {/* In Progress (47/148 = 32%) */}
-                                            <circle cx="65" cy="65" r="52" fill="none" stroke="#ffcd00" strokeWidth="14" strokeDasharray="100 227" strokeDashoffset="-213" strokeLinecap="round" />
-                                            {/* Delayed (5/148 = 3%) */}
-                                            <circle cx="65" cy="65" r="52" fill="none" stroke="#e31837" strokeWidth="14" strokeDasharray="11 316" strokeDashoffset="-313" strokeLinecap="round" />
-                                        </svg>
-                                        <div className="ring-text"><div className="ring-pct">148</div><div className="ring-lbl">Activities</div></div>
-                                    </div>
-                                    <div className="d-flex flex-column gap-2">
-                                        <div className="d-flex align-items-center gap-2"><div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#10b981' }}></div><div><div style={{ fontSize: '.78rem', fontWeight: 700, color: '#0f172a' }}>96</div><div style={{ fontSize: '.65rem', color: '#64748b' }}>On Track</div></div></div>
-                                        <div className="d-flex align-items-center gap-2"><div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#ffcd00' }}></div><div><div style={{ fontSize: '.78rem', fontWeight: 700, color: '#0f172a' }}>47</div><div style={{ fontSize: '.65rem', color: '#64748b' }}>In Progress</div></div></div>
-                                        <div className="d-flex align-items-center gap-2"><div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#e31837' }}></div><div><div style={{ fontSize: '.78rem', fontWeight: 700, color: '#0f172a' }}>5</div><div style={{ fontSize: '.65rem', color: '#64748b' }}>Delayed</div></div></div>
+                            <div className="table-card bg-white rounded-3 shadow-sm border p-4">
+                                <h5 className="mb-3" style={{ fontSize: '.9rem', fontWeight: 800 }}>Activity Status Split</h5>
+                                <div className="d-flex align-items-center justify-content-center position-relative mb-4" style={{ height: '150px' }}>
+                                    <svg width="130" height="130" viewBox="0 0 130 130">
+                                        <circle cx="65" cy="65" r="52" fill="none" stroke="#f1f5f9" strokeWidth="14" />
+                                        {/* On track */}
+                                        <circle cx="65" cy="65" r="52" fill="none" stroke="#10b981" strokeWidth="14" strokeDasharray={`${(onTrackPct / 100) * 326.7} 326.7`} strokeLinecap="round" />
+                                        {/* In Progress */}
+                                        <circle cx="65" cy="65" r="52" fill="none" stroke="#ffcd00" strokeWidth="14" strokeDasharray={`${(inProgressPct / 100) * 326.7} 326.7`} strokeDashoffset={`${-((onTrackPct / 100) * 326.7)}`} strokeLinecap="round" />
+                                        {/* Delayed */}
+                                        <circle cx="65" cy="65" r="52" fill="none" stroke="#ef4444" strokeWidth="14" strokeDasharray={`${(delayedPct / 100) * 326.7} 326.7`} strokeDashoffset={`${-(((onTrackPct + inProgressPct) / 100) * 326.7)}`} strokeLinecap="round" />
+                                    </svg>
+                                    <div className="position-absolute text-center">
+                                        <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#1e293b' }}>{totalActivities}</div>
+                                        <div style={{ fontSize: '.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Items</div>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div className="table-card">
-                                <div className="table-card-header"><h5 style={{ fontSize: '.88rem' }}>Top &amp; Bottom Units</h5></div>
-                                <div className="p-3">
-                                    <div style={{ fontSize: '.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: '#059669', marginBottom: '.5rem' }}>Top Performers</div>
-                                    <div className="d-flex align-items-center gap-2 mb-2"><span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#059669' }}>emoji_events</span><span style={{ fontSize: '.82rem', fontWeight: 700, color: '#0f172a' }}>Library Unit</span><span className="ms-auto fw-bold" style={{ color: '#059669', fontSize: '.82rem' }}>88%</span></div>
-                                    <div className="d-flex align-items-center gap-2 mb-3"><span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#22c55e' }}>emoji_events</span><span style={{ fontSize: '.82rem', fontWeight: 700, color: '#0f172a' }}>Faculty of Computing</span><span className="ms-auto fw-bold" style={{ color: '#22c55e', fontSize: '.82rem' }}>82%</span></div>
-                                    <div style={{ fontSize: '.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: '#e31837', marginBottom: '.5rem' }}>Needs Attention</div>
-                                    <div className="d-flex align-items-center gap-2 mb-2"><span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#e31837' }}>arrow_downward</span><span style={{ fontSize: '.82rem', fontWeight: 700, color: '#0f172a' }}>Research &amp; Innovation</span><span className="ms-auto fw-bold" style={{ color: '#e31837', fontSize: '.82rem' }}>29%</span></div>
-                                    <div className="d-flex align-items-center gap-2"><span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#fb923c' }}>arrow_downward</span><span style={{ fontSize: '.82rem', fontWeight: 700, color: '#0f172a' }}>Finance &amp; Admin</span><span className="ms-auto fw-bold" style={{ color: '#fb923c', fontSize: '.82rem' }}>41%</span></div>
+                                <div className="d-flex flex-column gap-2">
+                                    <div className="d-flex align-items-center justify-content-between p-2 rounded-2" style={{ background: '#f0fdf4' }}>
+                                        <div className="d-flex align-items-center gap-2">
+                                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981' }}></div>
+                                            <span style={{ fontSize: '.75rem', fontWeight: 700, color: '#166534' }}>On Track / Done</span>
+                                        </div>
+                                        <span style={{ fontSize: '.75rem', fontWeight: 800, color: '#166534' }}>{onTrackCount + completedCount}</span>
+                                    </div>
+                                    <div className="d-flex align-items-center justify-content-between p-2 rounded-2" style={{ background: '#fffbeb' }}>
+                                        <div className="d-flex align-items-center gap-2">
+                                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ffcd00' }}></div>
+                                            <span style={{ fontSize: '.75rem', fontWeight: 700, color: '#92400e' }}>In Progress</span>
+                                        </div>
+                                        <span style={{ fontSize: '.75rem', fontWeight: 800, color: '#92400e' }}>{inProgressCount}</span>
+                                    </div>
+                                    <div className="d-flex align-items-center justify-content-between p-2 rounded-2" style={{ background: '#fef2f2' }}>
+                                        <div className="d-flex align-items-center gap-2">
+                                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }}></div>
+                                            <span style={{ fontSize: '.75rem', fontWeight: 700, color: '#991b1b' }}>Delayed</span>
+                                        </div>
+                                        <span style={{ fontSize: '.75rem', fontWeight: 800, color: '#991b1b' }}>{delayedCount}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -172,57 +211,53 @@ export default function PerformanceAnalytics() {
                 <div id="tab-compliance" className="analytics-tab">
                     <div className="row g-4">
                         <div className="col-12 col-lg-8">
-                            <div className="table-card">
-                                <div className="table-card-header">
-                                    <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>fact_check</span>Compliance Rate by Department</h5>
-                                    <span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>Institutional Target: 85%</span>
+                            <div className="table-card bg-white rounded-3 shadow-sm border p-0">
+                                <div className="p-4 border-bottom d-flex align-items-center justify-content-between">
+                                    <h5 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '1rem', fontWeight: 800 }}>
+                                        <span className="material-symbols-outlined text-primary">fact_check</span>
+                                        Compliance Distribution
+                                    </h5>
+                                    <span className="badge p-2 px-3" style={{ background: '#fef9c3', color: '#a16207', fontWeight: 800 }}>Target: 85%</span>
                                 </div>
-                                <div className="table-responsive">
-                                    <table className="table mb-0">
-                                        <thead><tr><th>Department / Unit</th><th>Activities</th><th>Compliant</th><th>Compliance Rate</th><th>Target Gap</th><th>Status</th></tr></thead>
-                                        <tbody>
-                                            <tr><td className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Faculty of Computing</td><td style={{ fontSize: '.83rem' }}>24</td><td style={{ fontSize: '.83rem' }}>22</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '80px' }}><div className="progress-bar-fill" style={{ width: '92%', background: '#10b981' }}></div></div><span style={{ fontSize: '.75rem' }}>92%</span></div></td><td style={{ fontSize: '.83rem', color: '#059669' }}>+7%</td><td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Compliant</span></td></tr>
-                                            <tr><td className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Faculty of Commerce</td><td style={{ fontSize: '.83rem' }}>18</td><td style={{ fontSize: '.83rem' }}>15</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '80px' }}><div className="progress-bar-fill" style={{ width: '80%', background: '#10b981' }}></div></div><span style={{ fontSize: '.75rem' }}>80%</span></div></td><td style={{ fontSize: '.83rem', color: '#059669' }}>+5%</td><td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Compliant</span></td></tr>
-                                            <tr><td className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Library Unit</td><td style={{ fontSize: '.83rem' }}>10</td><td style={{ fontSize: '.83rem' }}>8</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '80px' }}><div className="progress-bar-fill" style={{ width: '76%', background: '#22c55e' }}></div></div><span style={{ fontSize: '.75rem' }}>76%</span></div></td><td style={{ fontSize: '.83rem', color: '#059669' }}>+1%</td><td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Compliant</span></td></tr>
-                                            <tr><td className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>School of Grad Studies</td><td style={{ fontSize: '.83rem' }}>15</td><td style={{ fontSize: '.83rem' }}>10</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '80px' }}><div className="progress-bar-fill" style={{ width: '68%', background: '#ffcd00' }}></div></div><span style={{ fontSize: '.75rem' }}>68%</span></div></td><td style={{ fontSize: '.83rem', color: '#b45309' }}>–17%</td><td><span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>Watch</span></td></tr>
-                                            <tr><td className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>HR Department</td><td style={{ fontSize: '.83rem' }}>8</td><td style={{ fontSize: '.83rem' }}>5</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '80px' }}><div className="progress-bar-fill" style={{ width: '58%', background: '#fb923c' }}></div></div><span style={{ fontSize: '.75rem' }}>58%</span></div></td><td style={{ fontSize: '.83rem', color: '#c2410c' }}>–27%</td><td><span className="status-badge" style={{ background: '#fde8d8', color: '#c2410c' }}>At Risk</span></td></tr>
-                                            <tr><td className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Finance &amp; Admin</td><td style={{ fontSize: '.83rem' }}>20</td><td style={{ fontSize: '.83rem' }}>8</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '80px' }}><div className="progress-bar-fill" style={{ width: '41%', background: '#e31837' }}></div></div><span style={{ fontSize: '.75rem' }}>41%</span></div></td><td style={{ fontSize: '.83rem', color: '#b91c1c' }}>–44%</td><td><span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Critical</span></td></tr>
-                                            <tr><td className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Research &amp; Innovation</td><td style={{ fontSize: '.83rem' }}>12</td><td style={{ fontSize: '.83rem' }}>3</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '80px' }}><div className="progress-bar-fill" style={{ width: '29%', background: '#e31837' }}></div></div><span style={{ fontSize: '.75rem' }}>29%</span></div></td><td style={{ fontSize: '.83rem', color: '#b91c1c' }}>–56%</td><td><span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Critical</span></td></tr>
-                                            <tr style={{ background: '#f8fafc' }}><td className="fw-bold" style={{ color: 'var(--mubs-blue)' }}>Institution Average</td><td className="fw-bold">107</td><td className="fw-bold">71</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '80px' }}><div className="progress-bar-fill" style={{ width: '73%', background: 'var(--mubs-blue)' }}></div></div><span className="fw-bold" style={{ fontSize: '.75rem' }}>73%</span></div></td><td className="fw-bold" style={{ color: '#b45309' }}>–12%</td><td><span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>Watch</span></td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div className="table-card-footer">
-                                    <span className="footer-label">Compliance target: 85% by December 2025</span>
-                                    <button className="btn btn-sm btn-success fw-bold"><span className="material-symbols-outlined me-1" style={{ fontSize: '16px' }}>download</span>Export</button>
+                                <div className="p-4 d-flex flex-column gap-4">
+                                    <div>
+                                        <div className="d-flex justify-content-between mb-2">
+                                            <span style={{ fontSize: '.85rem', fontWeight: 700, color: '#059669' }}>≥75% — Compliant Units</span>
+                                            <span style={{ fontSize: '.85rem', fontWeight: 800, color: '#059669' }}>{complianceDistribution.compliant}</span>
+                                        </div>
+                                        <div className="progress" style={{ height: '12px', borderRadius: '6px', background: '#f1f5f9' }}>
+                                            <div className="progress-bar" style={{ width: `${(complianceDistribution.compliant / (unitPerformance.length || 1)) * 100}%`, background: '#10b981' }}></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="d-flex justify-content-between mb-2">
+                                            <span style={{ fontSize: '.85rem', fontWeight: 700, color: '#a16207' }}>50–74% — Watchlist Units</span>
+                                            <span style={{ fontSize: '.85rem', fontWeight: 800, color: '#a16207' }}>{complianceDistribution.watch}</span>
+                                        </div>
+                                        <div className="progress" style={{ height: '12px', borderRadius: '6px', background: '#f1f5f9' }}>
+                                            <div className="progress-bar" style={{ width: `${(complianceDistribution.watch / (unitPerformance.length || 1)) * 100}%`, background: '#ffcd00' }}></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div className="d-flex justify-content-between mb-2">
+                                            <span style={{ fontSize: '.85rem', fontWeight: 700, color: '#b91c1c' }}>&lt;50% — Critical Units</span>
+                                            <span style={{ fontSize: '.85rem', fontWeight: 800, color: '#b91c1c' }}>{complianceDistribution.critical}</span>
+                                        </div>
+                                        <div className="progress" style={{ height: '12px', borderRadius: '6px', background: '#f1f5f9' }}>
+                                            <div className="progress-bar" style={{ width: `${(complianceDistribution.critical / (unitPerformance.length || 1)) * 100}%`, background: '#ef4444' }}></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         <div className="col-12 col-lg-4">
-                            <div className="table-card">
-                                <div className="table-card-header"><h5 style={{ fontSize: '.9rem' }}>Compliance Distribution</h5></div>
-                                <div className="p-4">
-                                    <div className="mb-3">
-                                        <div className="d-flex justify-content-between mb-1"><span style={{ fontSize: '.8rem', fontWeight: 700, color: '#059669' }}>≥75% — Compliant</span><span className="fw-bold" style={{ fontSize: '.8rem' }}>3 units</span></div>
-                                        <div className="gauge-bar"><div className="gauge-fill" style={{ width: '43%', background: '#10b981' }}></div></div>
-                                    </div>
-                                    <div className="mb-3">
-                                        <div className="d-flex justify-content-between mb-1"><span style={{ fontSize: '.8rem', fontWeight: 700, color: '#a16207' }}>50–74% — Watchlist</span><span className="fw-bold" style={{ fontSize: '.8rem' }}>2 units</span></div>
-                                        <div className="gauge-bar"><div className="gauge-fill" style={{ width: '29%', background: '#ffcd00' }}></div></div>
-                                    </div>
-                                    <div className="mb-3">
-                                        <div className="d-flex justify-content-between mb-1"><span style={{ fontSize: '.8rem', fontWeight: 700, color: '#b91c1c' }}>&lt;50% — Critical</span><span className="fw-bold" style={{ fontSize: '.8rem' }}>2 units</span></div>
-                                        <div className="gauge-bar"><div className="gauge-fill" style={{ width: '29%', background: '#e31837' }}></div></div>
-                                    </div>
-                                    <hr />
-                                    <div className="text-center mt-3">
-                                        <div style={{ fontSize: '2.2rem', fontWeight: 900, color: 'var(--mubs-blue)' }}>73%</div>
-                                        <div style={{ fontSize: '.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#64748b' }}>Institutional Average</div>
-                                        <div style={{ fontSize: '.75rem', color: '#b45309', fontWeight: 600, marginTop: '.3rem' }}>12% below target (85%)</div>
-                                        <div className="gauge-bar mt-2"><div className="gauge-fill" style={{ width: '73%', background: 'var(--mubs-blue)' }}></div></div>
-                                        <div className="d-flex justify-content-between mt-1"><span style={{ fontSize: '.65rem', color: '#94a3b8' }}>0%</span><span style={{ fontSize: '.65rem', color: 'var(--mubs-blue)', fontWeight: 800 }}>85% target</span><span style={{ fontSize: '.65rem', color: '#94a3b8' }}>100%</span></div>
-                                    </div>
+                            <div className="table-card bg-white rounded-3 shadow-sm border p-4 text-center">
+                                <div style={{ fontSize: '3rem', fontWeight: 900, color: 'var(--mubs-blue)' }}>{institutionAverage}%</div>
+                                <div style={{ fontSize: '.75rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748b', letterSpacing: '.1em' }}>Institutional Compliance</div>
+                                <div className="progress mt-4 mb-2" style={{ height: '8px', borderRadius: '4px' }}>
+                                    <div className="progress-bar" style={{ width: `${institutionAverage}%`, background: 'var(--mubs-blue)' }}></div>
                                 </div>
+                                <div className="text-muted small">Based on {unitPerformance.length} units</div>
                             </div>
                         </div>
                     </div>
@@ -232,51 +267,62 @@ export default function PerformanceAnalytics() {
             {/* Tab 3: Staff Performance */}
             {activeTab === 'staff' && (
                 <div id="tab-staff" className="analytics-tab">
-                    <div className="table-card">
-                        <div className="table-card-header">
-                            <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>person_search</span>Staff Performance Summaries</h5>
-                            <div className="d-flex gap-2">
-                                <select className="form-select form-select-sm" style={{ width: '160px' }} defaultValue="All Units">
-                                    <option>All Units</option>
-                                    <option>Faculty of Computing</option>
-                                    <option>Finance &amp; Admin</option>
-                                    <option>Research &amp; Innovation</option>
-                                </select>
-                                <select className="form-select form-select-sm" style={{ width: '130px' }} defaultValue="All Ratings">
-                                    <option>All Ratings</option>
-                                    <option>Excellent</option>
-                                    <option>Good</option>
-                                    <option>Poor</option>
-                                </select>
-                            </div>
+                    <div className="table-card bg-white rounded-3 shadow-sm border p-0 overflow-hidden">
+                        <div className="p-4 border-bottom d-flex align-items-center justify-content-between">
+                            <h5 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '1rem', fontWeight: 800 }}>
+                                <span className="material-symbols-outlined text-primary">person_search</span>
+                                Staff Performance Summaries
+                            </h5>
                         </div>
                         <div className="table-responsive">
-                            <table className="table mb-0">
-                                <thead><tr><th>Staff</th><th>Unit</th><th>Activities</th><th>Completed</th><th>Rate</th><th>Rating</th></tr></thead>
+                            <table className="table table-hover align-middle mb-0">
+                                <thead className="bg-light">
+                                    <tr>
+                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Staff Member</th>
+                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Unit</th>
+                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Activities</th>
+                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Rate</th>
+                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Rating</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
-                                    <tr><td><div className="d-flex align-items-center gap-2"><div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--mubs-blue)' }}>person</span></div><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Dr. A. Ssekandi</div></div></td><td style={{ fontSize: '.83rem' }}>Faculty of Computing</td><td style={{ fontSize: '.83rem' }}>8</td><td style={{ fontSize: '.83rem' }}>7</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '70px' }}><div className="progress-bar-fill" style={{ width: '87%', background: '#10b981' }}></div></div><span style={{ fontSize: '.75rem' }}>87%</span></div></td><td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Excellent</span></td></tr>
-                                    <tr><td><div className="d-flex align-items-center gap-2"><div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--mubs-blue)' }}>person</span></div><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Ms. N. Amone</div></div></td><td style={{ fontSize: '.83rem' }}>Library Unit</td><td style={{ fontSize: '.83rem' }}>10</td><td style={{ fontSize: '.83rem' }}>9</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '70px' }}><div className="progress-bar-fill" style={{ width: '90%', background: '#10b981' }}></div></div><span style={{ fontSize: '.75rem' }}>90%</span></div></td><td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Excellent</span></td></tr>
-                                    <tr><td><div className="d-flex align-items-center gap-2"><div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--mubs-blue)' }}>person</span></div><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Ms. B. Nalugo</div></div></td><td style={{ fontSize: '.83rem' }}>HR Department</td><td style={{ fontSize: '.83rem' }}>6</td><td style={{ fontSize: '.83rem' }}>4</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '70px' }}><div className="progress-bar-fill" style={{ width: '66%', background: '#ffcd00' }}></div></div><span style={{ fontSize: '.75rem' }}>66%</span></div></td><td><span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>Good</span></td></tr>
-                                    <tr><td><div className="d-flex align-items-center gap-2"><div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--mubs-blue)' }}>person</span></div><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Mr. P. Okello</div></div></td><td style={{ fontSize: '.83rem' }}>Finance &amp; Admin</td><td style={{ fontSize: '.83rem' }}>7</td><td style={{ fontSize: '.83rem' }}>3</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '70px' }}><div className="progress-bar-fill" style={{ width: '43%', background: '#fb923c' }}></div></div><span style={{ fontSize: '.75rem' }}>43%</span></div></td><td><span className="status-badge" style={{ background: '#fde8d8', color: '#c2410c' }}>Fair</span></td></tr>
-                                    <tr><td><div className="d-flex align-items-center gap-2"><div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#fff1f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#e31837' }}>person</span></div><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Mr. C. Opio</div></div></td><td style={{ fontSize: '.83rem' }}>Research &amp; Innovation</td><td style={{ fontSize: '.83rem' }}>5</td><td style={{ fontSize: '.83rem' }}>1</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '70px' }}><div className="progress-bar-fill" style={{ width: '20%', background: '#e31837' }}></div></div><span style={{ fontSize: '.75rem' }}>20%</span></div></td><td><span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Poor</span></td></tr>
-                                    <tr><td><div className="d-flex align-items-center gap-2"><div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#fff1f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#e31837' }}>person</span></div><div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>Dr. R. Nabasa</div></div></td><td style={{ fontSize: '.83rem' }}>Research &amp; Innovation</td><td style={{ fontSize: '.83rem' }}>4</td><td style={{ fontSize: '.83rem' }}>1</td><td><div className="d-flex align-items-center gap-2"><div className="progress-bar-custom" style={{ width: '70px' }}><div className="progress-bar-fill" style={{ width: '25%', background: '#e31837' }}></div></div><span style={{ fontSize: '.75rem' }}>25%</span></div></td><td><span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Poor</span></td></tr>
+                                    {staffPerformance.map((staff, idx) => {
+                                        const rating = staff.rate >= 85 ? 'Excellent' : (staff.rate >= 70 ? 'Good' : (staff.rate >= 50 ? 'Fair' : 'Needs Improvement'));
+                                        const ratingColor = staff.rate >= 85 ? '#10b981' : (staff.rate >= 70 ? '#22c55e' : (staff.rate >= 50 ? '#ffcd00' : '#ef4444'));
+                                        const ratingBg = staff.rate >= 85 ? '#f0fdf4' : (staff.rate >= 70 ? '#f0fdf4' : (staff.rate >= 50 ? '#fffbeb' : '#fef2f2'));
+
+                                        return (
+                                            <tr key={idx}>
+                                                <td className="p-3 border-light">
+                                                    <div className="d-flex align-items-center gap-3">
+                                                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                            <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>person</span>
+                                                        </div>
+                                                        <span style={{ fontSize: '.88rem', fontWeight: 700, color: '#1e293b' }}>{staff.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 border-light text-muted" style={{ fontSize: '.85rem' }}>{staff.unit}</td>
+                                                <td className="p-3 border-light fw-bold" style={{ fontSize: '.85rem' }}>{staff.completed}/{staff.totalActivities}</td>
+                                                <td className="p-3 border-light">
+                                                    <div className="d-flex align-items-center gap-2">
+                                                        <div className="progress flex-fill" style={{ height: '6px', width: '80px', borderRadius: '3px', background: '#f1f5f9' }}>
+                                                            <div className="progress-bar" style={{ width: `${staff.rate}%`, background: ratingColor }}></div>
+                                                        </div>
+                                                        <span style={{ fontSize: '.8rem', fontWeight: 800 }}>{staff.rate}%</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 border-light">
+                                                    <span className="badge" style={{ background: ratingBg, color: ratingColor, fontWeight: 800, fontSize: '.68rem', padding: '5px 10px', borderRadius: '6px' }}>{rating}</span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
-                        </div>
-                        <div className="table-card-footer">
-                            <span className="footer-label">Showing 6 of 86 staff · Read-only view</span>
-                            <div className="d-flex gap-1">
-                                <button className="page-btn" disabled>‹</button>
-                                <button className="page-btn active">1</button>
-                                <button className="page-btn">2</button>
-                                <button className="page-btn">3</button>
-                                <button className="page-btn">›</button>
-                            </div>
                         </div>
                     </div>
                 </div>
             )}
-
         </div>
     );
 }

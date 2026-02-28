@@ -17,8 +17,8 @@ export async function GET(request: Request) {
     const values: any[] = [];
 
     if (role && role !== 'All Roles') {
-      sql += ' AND role = ?';
-      values.push(role);
+      sql += ' AND role LIKE ?';
+      values.push(`%${role}%`);
     }
 
     if (search) {

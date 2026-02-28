@@ -8,11 +8,13 @@ export async function GET() {
         SELECT 
           sa.*,
           u.name as unit,
-          CONCAT(DATE_FORMAT(start_date, '%b'), '-', DATE_FORMAT(end_date, '%Y')) as timeline
+          p.title as parent_title,
+          CONCAT(DATE_FORMAT(sa.start_date, '%b'), '-', DATE_FORMAT(sa.end_date, '%Y')) as timeline
         FROM strategic_activities sa
         LEFT JOIN units u ON sa.unit_id = u.id
+        LEFT JOIN strategic_activities p ON sa.parent_id = p.id
         ORDER BY sa.created_at DESC
-        LIMIT 50
+        LIMIT 100
       `
     });
 
@@ -29,15 +31,15 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, pillar, unit_id, target_kpi, status, start_date, end_date, description } = body;
+    const { title, pillar, unit_id, target_kpi, status, priority, parent_id, start_date, end_date, description } = body;
 
     const result = await query({
       query: `
         INSERT INTO strategic_activities 
-        (title, pillar, unit_id, target_kpi, status, progress, start_date, end_date, description) 
-        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
+        (title, pillar, unit_id, target_kpi, status, priority, parent_id, progress, start_date, end_date, description) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
       `,
-      values: [title, pillar, unit_id, target_kpi, status, start_date, end_date, description]
+      values: [title, pillar, unit_id, target_kpi, status, priority || 'Medium', parent_id || null, start_date, end_date, description]
     });
 
     return NextResponse.json(

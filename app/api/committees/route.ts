@@ -9,11 +9,13 @@ export async function GET() {
           cp.*,
           u.full_name as submitted_by,
           un.name as unit,
+          p.title as pillar_title,
           DATE_FORMAT(cp.submitted_date, '%d %b %Y') as submitted_date,
           cp.budget / 1000000 as budget
         FROM committee_proposals cp
         LEFT JOIN users u ON cp.submitted_by = u.id
         LEFT JOIN units un ON cp.unit_id = un.id
+        LEFT JOIN strategic_pillars p ON cp.pillar_id = p.id
         ORDER BY cp.submitted_date DESC
         LIMIT 50
       `
@@ -32,15 +34,22 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, description, submitted_by, unit_id, budget, status } = body;
+    const {
+      title, description, submitted_by, unit_id, budget, status,
+      committee_type, minute_reference, pillar_id
+    } = body;
 
     const result = await query({
       query: `
         INSERT INTO committee_proposals 
-        (title, description, submitted_by, unit_id, budget, status, submitted_date) 
-        VALUES (?, ?, ?, ?, ?, ?, CURDATE())
+        (title, description, submitted_by, unit_id, budget, status, committee_type, minute_reference, pillar_id, submitted_date) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())
       `,
-      values: [title, description, submitted_by, unit_id, budget * 1000000, status || 'Pending']
+      values: [
+        title, description, submitted_by, unit_id,
+        budget * 1000000, status || 'Pending',
+        committee_type || 'Other', minute_reference || null, pillar_id || null
+      ]
     });
 
     return NextResponse.json(

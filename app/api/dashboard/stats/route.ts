@@ -74,6 +74,30 @@ export async function GET() {
       `
     });
 
+    // Get HR alerts (Contracts expiring within 30 days or users on leave)
+    const hrAlerts = await query({
+      query: `
+        (SELECT 
+          id, full_name, role, contract_end_date as date, 
+          'Contract' as type, 
+          CONCAT('Expires in ', DATEDIFF(contract_end_date, CURDATE()), ' days') as message,
+          '#b45309' as color
+        FROM users 
+        WHERE contract_end_date IS NOT NULL 
+          AND contract_end_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
+        UNION
+        (SELECT 
+          id, full_name, role, CURDATE() as date, 
+          'Leave' as type, 
+          leave_status as message,
+          '#15803d' as color
+        FROM users 
+        WHERE leave_status != 'On Duty')
+        ORDER BY date ASC
+        LIMIT 6
+      `
+    });
+
     return NextResponse.json({
       stats: {
         totalActivities: (totalActivities as any[])[0]?.count || 0,
@@ -84,13 +108,15 @@ export async function GET() {
         pendingProposals: (pendingProposals as any[])[0]?.count || 0,
         onTrackActivities: (onTrackActivities as any[])[0]?.count || 0,
         inProgressActivities: (inProgressActivities as any[])[0]?.count || 0,
-        delayedActivities: (delayedActivities as any[])[0]?.count || 0
+        delayedActivities: (delayedActivities as any[])[0]?.count || 0,
+        hrAlertCount: (hrAlerts as any[]).length
       },
       unitPerformance: (unitPerformance as any[]).map(unit => ({
         name: unit.name,
         progress: Math.round(unit.progress || 0)
       })),
-      recentActivities: recentActivities
+      recentActivities: recentActivities,
+      hrAlerts: hrAlerts
     });
   } catch (error) {
     console.error('Dashboard stats error:', error);

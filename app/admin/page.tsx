@@ -1,10 +1,9 @@
-import React from 'react';
-import Dashboard from '@/app/page';
-import StrategicPage from '@/app/strategic/page';
-import CommitteePage from '@/app/committee/page';
-import TrackingPage from '@/app/tracking/page';
-import UsersPage from '@/app/users/page';
-import ReportsPage from '@/app/reports/page';
+import StrategicView from './views/Strategic';
+import CommitteeView from './views/Committee';
+import TrackingView from './views/Tracking';
+import UsersView from './views/Users';
+import ReportsView from './views/Reports';
+import AdminDashboardView from './views/Dashboard';
 
 interface AdminPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -16,17 +15,17 @@ export default async function AdminDashboard({ searchParams }: AdminPageProps) {
 
   switch (pg) {
     case 'strategic':
-      return <StrategicPage />;
+      return <StrategicView />;
     case 'committee':
-      return <CommitteePage />;
+      return <CommitteeView />;
     case 'tracking':
-      return <TrackingPage />;
+      return <TrackingView />;
     case 'users':
-      return <UsersPage />;
+      return <UsersView />;
     case 'reports':
-      return <ReportsPage />;
+      return <ReportsView />;
     case 'dashboard':
     default:
-      return <Dashboard />;
+      return <AdminDashboardView />;
   }
 }

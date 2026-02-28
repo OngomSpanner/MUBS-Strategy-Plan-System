@@ -1,115 +1,268 @@
 'use client';
-import React from 'react';
+
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import StatCard from '@/components/StatCard';
+
+interface Submission {
+    id: number;
+    report_name: string;
+    activity_title: string;
+    staff_name: string;
+    submitted_at: string;
+    status: string;
+    progress: number;
+}
+
+interface SubmissionData {
+    submissions: Submission[];
+    stats: {
+        pending: number;
+        underReview: number;
+        reviewed: number;
+        returned: number;
+    };
+    recentActivity: Array<{
+        id: number;
+        type: string;
+        message: string;
+        date: string;
+    }>;
+}
 
 export default function UnitSubmissions() {
+    const [data, setData] = useState<SubmissionData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [statusFilter, setStatusFilter] = useState('All Status');
+    const [staffFilter, setStaffFilter] = useState('All Staff');
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const response = await axios.get('/api/unit-head/submissions');
+                setData(response.data);
+            } catch (error) {
+                console.error('Error fetching unit submissions:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    if (loading || !data) {
+        return (
+            <div className="d-flex justify-content-center align-items-center vh-100">
+                <div className="spinner-border text-primary" role="status">
+                    <span className="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        );
+    }
+
+    const filteredSubmissions = data.submissions.filter(s => {
+        const matchesStatus = statusFilter === 'All Status' || s.status === statusFilter;
+        const matchesStaff = staffFilter === 'All Staff' || s.staff_name === staffFilter;
+        return matchesStatus && matchesStaff;
+    });
+
+    const formatDate = (dateStr: string) => {
+        if (!dateStr) return 'TBD';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    };
+
+    const staffMembers = [...new Set(data.submissions.map(s => s.staff_name))].filter(Boolean);
+
     return (
         <div id="page-submissions" className="page-section active-page">
-            <div className="row g-3 mb-4">
-                <div className="col-6 col-sm-3"><div className="stat-card text-center" style={{ borderLeftColor: 'var(--mubs-yellow)', padding: '1rem' }}><div className="stat-value" style={{ fontSize: '1.8rem', color: '#b45309' }}>6</div><div className="stat-label">Pending</div></div></div>
-                <div className="col-6 col-sm-3"><div className="stat-card text-center" style={{ borderLeftColor: 'var(--mubs-blue)', padding: '1rem' }}><div className="stat-value" style={{ fontSize: '1.8rem', color: 'var(--mubs-blue)' }}>2</div><div className="stat-label">Under Review</div></div></div>
-                <div className="col-6 col-sm-3"><div className="stat-card text-center" style={{ borderLeftColor: '#10b981', padding: '1rem' }}><div className="stat-value" style={{ fontSize: '1.8rem', color: '#059669' }}>14</div><div className="stat-label">Reviewed</div></div></div>
-                <div className="col-6 col-sm-3"><div className="stat-card text-center" style={{ borderLeftColor: 'var(--mubs-red)', padding: '1rem' }}><div className="stat-value" style={{ fontSize: '1.8rem', color: 'var(--mubs-red)' }}>1</div><div className="stat-label">Returned</div></div></div>
+            <div className="row g-4 mb-4">
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="pending_actions"
+                        label="Pending"
+                        value={data.stats.pending}
+                        badge="New"
+                        badgeIcon="fiber_new"
+                        color="yellow"
+                    />
+                </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="rate_review"
+                        label="Under Review"
+                        value={data.stats.underReview}
+                        badge="Active"
+                        badgeIcon="sync"
+                        color="blue"
+                    />
+                </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="task_alt"
+                        label="Reviewed"
+                        value={data.stats.reviewed}
+                        badge="Complete"
+                        badgeIcon="verified"
+                        color="green"
+                    />
+                </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="assignment_return"
+                        label="Returned"
+                        value={data.stats.returned}
+                        badge="Action"
+                        badgeIcon="reply"
+                        color="red"
+                    />
+                </div>
             </div>
 
             <div className="row g-4">
                 <div className="col-12 col-lg-8">
-                    <div className="table-card">
-                        <div className="table-card-header">
-                            <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>inbox</span>All Submissions</h5>
-                            <div className="d-flex gap-2 flex-wrap">
-                                <select className="form-select form-select-sm" style={{ width: '140px' }} defaultValue="All Status"><option>All Status</option><option>Pending Review</option><option>Under Review</option><option>Reviewed</option><option>Returned</option></select>
-                                <select className="form-select form-select-sm" style={{ width: '140px' }} defaultValue="All Staff"><option>All Staff</option><option>J. Amuge</option><option>P. Kato</option><option>M. Ogen</option><option>C. Opio</option></select>
+                    <div className="table-card shadow-sm border-0">
+                        <div className="table-card-header bg-white border-bottom py-3">
+                            <h5 className="mb-0 fw-black text-dark d-flex align-items-center gap-2">
+                                <span className="material-symbols-outlined text-primary">inbox</span>
+                                All Submissions
+                            </h5>
+                            <div className="d-flex gap-2 flex-wrap ms-auto">
+                                <select
+                                    className="form-select form-select-sm"
+                                    style={{ width: '140px' }}
+                                    value={statusFilter}
+                                    onChange={(e) => setStatusFilter(e.target.value)}
+                                >
+                                    <option>All Status</option>
+                                    <option>Pending</option>
+                                    <option>Under Review</option>
+                                    <option>Completed</option>
+                                    <option>Returned</option>
+                                </select>
+                                <select
+                                    className="form-select form-select-sm"
+                                    style={{ width: '140px' }}
+                                    value={staffFilter}
+                                    onChange={(e) => setStaffFilter(e.target.value)}
+                                >
+                                    <option>All Staff</option>
+                                    {staffMembers.map(s => <option key={s}>{s}</option>)}
+                                </select>
                             </div>
                         </div>
                         <div className="table-responsive">
-                            <table className="table mb-0">
-                                <thead><tr><th>Staff</th><th>Report / Task</th><th>Activity</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
+                            <table className="table mb-0 align-middle">
+                                <thead className="bg-light">
+                                    <tr>
+                                        <th className="ps-4">Staff</th>
+                                        <th>Report / Task</th>
+                                        <th>Activity</th>
+                                        <th>Submitted</th>
+                                        <th>Status</th>
+                                        <th className="pe-4 text-end">Actions</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
-                                    <tr>
-                                        <td><div className="d-flex align-items-center gap-2"><div className="staff-avatar" style={{ background: '#7c3aed' }}>JA</div><span className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>J. Amuge</span></div></td>
-                                        <td className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Lab Setup — Phase 1 Report</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Digital Learning Infra.</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Today, 08:42</td>
-                                        <td><span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>Pending</span></td>
-                                        <td><button className="btn btn-xs py-0 px-2 fw-bold text-white border-0" style={{ fontSize: '.74rem', background: 'var(--mubs-blue)' }}><span className="material-symbols-outlined" style={{ fontSize: '13px' }}>rate_review</span> Evaluate</button></td>
-                                    </tr>
-                                    <tr>
-                                        <td><div className="d-flex align-items-center gap-2"><div className="staff-avatar" style={{ background: '#b45309' }}>MO</div><span className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>M. Ogen</span></div></td>
-                                        <td className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Industry Contacts Register</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Industry Attachment</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>14 Apr, 14:10</td>
-                                        <td><span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>Pending</span></td>
-                                        <td><button className="btn btn-xs py-0 px-2 fw-bold text-white border-0" style={{ fontSize: '.74rem', background: 'var(--mubs-blue)' }}><span className="material-symbols-outlined" style={{ fontSize: '13px' }}>rate_review</span> Evaluate</button></td>
-                                    </tr>
-                                    <tr>
-                                        <td><div className="d-flex align-items-center gap-2"><div className="staff-avatar" style={{ background: '#059669' }}>PK</div><span className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>P. Kato</span></div></td>
-                                        <td className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Wiring Diagram — Lab B &amp; C</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Digital Learning Infra.</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>14 Apr, 09:00</td>
-                                        <td><span className="status-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)' }}>Under Review</span></td>
-                                        <td><button className="btn btn-xs btn-outline-secondary py-0 px-2" style={{ fontSize: '.74rem' }}><span className="material-symbols-outlined" style={{ fontSize: '13px' }}>visibility</span> View</button></td>
-                                    </tr>
-                                    <tr>
-                                        <td><div className="d-flex align-items-center gap-2"><div className="staff-avatar" style={{ background: '#059669' }}>PK</div><span className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>P. Kato</span></div></td>
-                                        <td className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Curriculum Draft — CS302</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>SW Dev Curriculum</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>12 Apr, 11:30</td>
-                                        <td><span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Reviewed</span></td>
-                                        <td><div className="d-flex gap-1"><button className="btn btn-xs btn-outline-secondary py-0 px-2" style={{ fontSize: '.74rem' }}><span className="material-symbols-outlined" style={{ fontSize: '13px' }}>visibility</span></button><span className="score-badge" style={{ background: '#dcfce7', color: '#15803d' }}>★ 4/5</span></div></td>
-                                    </tr>
-                                    <tr>
-                                        <td><div className="d-flex align-items-center gap-2"><div className="staff-avatar" style={{ background: '#b45309' }}>CO</div><span className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>C. Opio</span></div></td>
-                                        <td className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Budget Estimate Draft</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>Computer Lab Upgrade</td>
-                                        <td style={{ fontSize: '.78rem', color: '#64748b' }}>10 Apr, 16:00</td>
-                                        <td><span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Returned</span></td>
-                                        <td><div className="d-flex gap-1"><button className="btn btn-xs btn-outline-secondary py-0 px-2" style={{ fontSize: '.74rem' }}><span className="material-symbols-outlined" style={{ fontSize: '13px' }}>visibility</span></button><span className="score-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>↩ Returned</span></div></td>
-                                    </tr>
+                                    {filteredSubmissions.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={6} className="text-center py-5 text-muted">No submissions found.</td>
+                                        </tr>
+                                    ) : (
+                                        filteredSubmissions.map((s) => (
+                                            <tr key={s.id}>
+                                                <td className="ps-4">
+                                                    <div className="d-flex align-items-center gap-2 py-1">
+                                                        <div className="staff-avatar" style={{
+                                                            background: 'var(--mubs-blue)',
+                                                            width: '32px',
+                                                            height: '32px',
+                                                            borderRadius: '8px',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            color: '#fff',
+                                                            fontWeight: 'bold',
+                                                            fontSize: '.75rem'
+                                                        }}>
+                                                            {s.staff_name?.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                                        </div>
+                                                        <span className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{s.staff_name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{s.report_name}</td>
+                                                <td style={{ fontSize: '.78rem', color: '#64748b' }}>{s.activity_title}</td>
+                                                <td style={{ fontSize: '.78rem', color: '#64748b' }}>{formatDate(s.submitted_at)}</td>
+                                                <td>
+                                                    <span className="status-badge" style={{
+                                                        background: s.status === 'Completed' ? '#dcfce7' : (s.status === 'Under Review' ? '#eff6ff' : (s.status === 'Returned' ? '#fee2e2' : '#fef9c3')),
+                                                        color: s.status === 'Completed' ? '#15803d' : (s.status === 'Under Review' ? '#1d4ed8' : (s.status === 'Returned' ? '#b91c1c' : '#a16207')),
+                                                        fontSize: '0.65rem'
+                                                    }}>{s.status}</span>
+                                                </td>
+                                                <td className="pe-4 text-end">
+                                                    {s.status === 'Pending' || s.status === 'Under Review' ? (
+                                                        <button className="btn btn-sm btn-primary fw-bold py-1 px-3 d-inline-flex align-items-center gap-1" style={{ fontSize: '.74rem', borderRadius: '8px' }}>
+                                                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>rate_review</span> Evaluate
+                                                        </button>
+                                                    ) : (
+                                                        <button className="btn btn-sm btn-outline-secondary fw-bold py-1 px-3 d-inline-flex align-items-center gap-1" style={{ fontSize: '.74rem', borderRadius: '8px' }}>
+                                                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>visibility</span> View
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                         </div>
-                        <div className="table-card-footer">
-                            <span className="footer-label">Showing 5 of 23 submissions</span>
-                            <div className="d-flex gap-1">
-                                <button className="page-btn" disabled>‹</button>
-                                <button className="page-btn active">1</button>
-                                <button className="page-btn">2</button>
-                                <button className="page-btn">›</button>
-                            </div>
+                        <div className="table-card-footer border-top py-3 px-4">
+                            <span className="footer-label small text-muted">Showing {filteredSubmissions.length} of {data.submissions.length} submissions</span>
                         </div>
                     </div>
                 </div>
 
                 {/* Submission timeline */}
                 <div className="col-12 col-lg-4">
-                    <div className="table-card">
-                        <div className="table-card-header"><h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>history</span>Recent Activity</h5></div>
+                    <div className="table-card shadow-sm border-0 h-100">
+                        <div className="table-card-header bg-white border-bottom py-3">
+                            <h5 className="mb-0 fw-black text-dark d-flex align-items-center gap-2">
+                                <span className="material-symbols-outlined text-primary">history</span>
+                                Recent Activity
+                            </h5>
+                        </div>
                         <div className="p-4">
-                            <div className="timeline-item">
-                                <div className="timeline-dot" style={{ background: '#fef9c3' }}><span className="material-symbols-outlined" style={{ color: '#b45309' }}>inbox</span></div>
-                                <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Lab Setup Report submitted by J. Amuge</div>
-                                <div className="text-muted" style={{ fontSize: '.73rem' }}>Today, 08:42</div>
-                            </div>
-                            <div className="timeline-item">
-                                <div className="timeline-dot" style={{ background: '#dcfce7' }}><span className="material-symbols-outlined" style={{ color: '#059669' }}>check_circle</span></div>
-                                <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Curriculum Draft reviewed · Score: 4/5</div>
-                                <div className="text-muted" style={{ fontSize: '.73rem' }}>Yesterday, 15:10 · Reviewed by you</div>
-                            </div>
-                            <div className="timeline-item">
-                                <div className="timeline-dot" style={{ background: '#fff1f2' }}><span className="material-symbols-outlined" style={{ color: '#e31837' }}>reply</span></div>
-                                <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Budget Estimate returned to C. Opio for revision</div>
-                                <div className="text-muted" style={{ fontSize: '.73rem' }}>10 Apr, 16:42</div>
-                            </div>
-                            <div className="timeline-item">
-                                <div className="timeline-dot" style={{ background: '#eff6ff' }}><span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)' }}>inbox</span></div>
-                                <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Wiring Diagram submitted by P. Kato</div>
-                                <div className="text-muted" style={{ fontSize: '.73rem' }}>14 Apr, 09:00</div>
-                            </div>
-                            <div className="timeline-item">
-                                <div className="timeline-dot" style={{ background: '#dcfce7' }}><span className="material-symbols-outlined" style={{ color: '#059669' }}>check_circle</span></div>
-                                <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Site Survey reviewed · Score: 4/5</div>
-                                <div className="text-muted" style={{ fontSize: '.73rem' }}>10 Apr, 11:00</div>
-                            </div>
+                            {data.recentActivity.length === 0 ? (
+                                <div className="text-center py-4 text-muted small">No recent activity.</div>
+                            ) : (
+                                data.recentActivity.map((activity, idx) => (
+                                    <div key={idx} className="timeline-item mb-4 pb-4 border-start ps-4 position-relative" style={{ borderLeftStyle: 'dashed !important' }}>
+                                        <div className="timeline-dot position-absolute" style={{
+                                            left: '-10px',
+                                            top: '0',
+                                            width: '20px',
+                                            height: '20px',
+                                            borderRadius: '50%',
+                                            background: (activity.type === 'Completed' ? '#dcfce7' : (activity.type === 'Returned' ? '#fee2e2' : '#fef9c3')),
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            border: '2px solid white',
+                                            boxShadow: '0 0 0 1px #e2e8f0'
+                                        }}>
+                                            <span className="material-symbols-outlined" style={{
+                                                fontSize: '12px',
+                                                color: (activity.type === 'Completed' ? '#15803d' : (activity.type === 'Returned' ? '#b91c1c' : '#a16207'))
+                                            }}>
+                                                {activity.type === 'Completed' ? 'check_circle' : (activity.type === 'Returned' ? 'reply' : 'inbox')}
+                                            </span>
+                                        </div>
+                                        <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{activity.message}</div>
+                                        <div className="text-muted small mt-1" style={{ fontSize: '.73rem' }}>{formatDate(activity.date)}</div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>

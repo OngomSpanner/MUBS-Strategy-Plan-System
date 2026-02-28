@@ -9,7 +9,7 @@ export async function GET() {
           COUNT(*)                                                      AS total,
           SUM(CASE WHEN status = 'Active'    THEN 1 ELSE 0 END)       AS active,
           SUM(CASE WHEN status = 'Suspended' THEN 1 ELSE 0 END)       AS suspended,
-          COUNT(DISTINCT role)                                          AS definedRoles
+          5                                                       AS definedRoles
         FROM users
       `
         }) as any[];
