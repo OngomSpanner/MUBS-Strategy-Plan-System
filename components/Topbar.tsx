@@ -43,10 +43,10 @@ export default function Topbar({ pageTitle, toggleSidebar }: TopbarProps) {
       if (res.ok) {
         // Force hard redirect to the new role's dashboard to reload everything
         let redirectPath = '/staff';
-        if (newRole === 'Super Admin' || newRole === 'Manager') redirectPath = '/admin';
+        if (newRole === 'Super Admin' || newRole === 'Manager' || newRole === 'Strategy Manager' || newRole === 'System Administrator') redirectPath = '/admin';
         else if (newRole === 'Committee Member') redirectPath = '/comm';
         else if (newRole === 'Principal') redirectPath = '/principal';
-        else if (newRole === 'Unit Head') redirectPath = '/unit-head';
+        else if (newRole === 'Unit Head' || newRole === 'HOD') redirectPath = '/unit-head';
 
         window.location.href = redirectPath;
       } else {
@@ -122,7 +122,7 @@ export default function Topbar({ pageTitle, toggleSidebar }: TopbarProps) {
               {user ? user.full_name : 'Loading...'}
             </div>
             <div className="text-white-50" style={{ fontSize: '.68rem' }}>
-              {activeRole || '...'}
+              {activeRole === 'HOD' ? 'Head of Department' : (activeRole || '...')}
             </div>
           </div>
           <div style={{
@@ -155,7 +155,7 @@ export default function Topbar({ pageTitle, toggleSidebar }: TopbarProps) {
                       onClick={() => handleRoleSwitch(role)}
                       disabled={loadingRole === role}
                     >
-                      <span>View as {role}</span>
+                      <span>View as {role === 'HOD' ? 'Head of Department' : role}</span>
                       {loadingRole === role && <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>}
                     </button>
                   </li>

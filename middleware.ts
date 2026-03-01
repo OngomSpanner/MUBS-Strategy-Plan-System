@@ -9,10 +9,10 @@ export function middleware(request: NextRequest) {
 
     // Define route mappings
     const routeRequirements: Record<string, string[]> = {
-        '/admin': ['Super Admin', 'Manager'],
+        '/admin': ['Super Admin', 'Manager', 'Strategy Manager', 'System Administrator'],
         '/comm': ['Committee Member'],
         '/principal': ['Principal'],
-        '/unit-head': ['Unit Head'],
+        '/unit-head': ['Unit Head', 'HOD'],
         '/staff': ['Staff', 'Viewer'] // Fallbacks
     };
 
@@ -30,10 +30,10 @@ export function middleware(request: NextRequest) {
         // If active role doesn't match the path requirements, block and redirect to their actual active role dashboard
         if (!allowedRoles.includes(activeRole)) {
             let redirectPath = '/staff'; // Default fallback
-            if (activeRole === 'Super Admin' || activeRole === 'Manager') redirectPath = '/admin';
+            if (activeRole === 'Super Admin' || activeRole === 'Manager' || activeRole === 'Strategy Manager' || activeRole === 'System Administrator') redirectPath = '/admin';
             else if (activeRole === 'Committee Member') redirectPath = '/comm';
             else if (activeRole === 'Principal') redirectPath = '/principal';
-            else if (activeRole === 'Unit Head') redirectPath = '/unit-head';
+            else if (activeRole === 'Unit Head' || activeRole === 'HOD') redirectPath = '/unit-head';
 
             return NextResponse.redirect(new URL(redirectPath, request.url));
         }
@@ -42,10 +42,10 @@ export function middleware(request: NextRequest) {
     // Prevent logged-in users from seeing the login page
     if (token && activeRole && path === '/') {
         let redirectPath = '/staff'; // Default fallback
-        if (activeRole === 'Super Admin' || activeRole === 'Manager') redirectPath = '/admin';
+        if (activeRole === 'Super Admin' || activeRole === 'Manager' || activeRole === 'Strategy Manager' || activeRole === 'System Administrator') redirectPath = '/admin';
         else if (activeRole === 'Committee Member') redirectPath = '/comm';
         else if (activeRole === 'Principal') redirectPath = '/principal';
-        else if (activeRole === 'Unit Head') redirectPath = '/unit-head';
+        else if (activeRole === 'Unit Head' || activeRole === 'HOD') redirectPath = '/unit-head';
 
         return NextResponse.redirect(new URL(redirectPath, request.url));
     }

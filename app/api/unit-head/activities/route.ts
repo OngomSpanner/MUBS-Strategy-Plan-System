@@ -1,11 +1,47 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verifyToken } from '@/lib/auth';
 
 export async function GET() {
     try {
-        const unitId = 1;
+        const cookieStore = await cookies();
+        const token = cookieStore.get('token')?.value;
 
-        // Fetch all activities for the unit
+        if (!token) {
+            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+        }
+
+        const decoded = verifyToken(token) as any;
+        if (!decoded || !decoded.userId) {
+            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+        }
+
+        // 1. Get user's department
+        const users = await query({
+            query: 'SELECT department FROM users WHERE id = ?',
+            values: [decoded.userId]
+        }) as any[];
+
+        if (users.length === 0 || !users[0].department) {
+            return NextResponse.json({ activities: [], stats: { total: 0, onTrack: 0, inProgress: 0, delayed: 0 } });
+        }
+
+        const userDept = users[0].department;
+
+        // 2. Get unit ID
+        const units = await query({
+            query: 'SELECT id FROM units WHERE name = ?',
+            values: [userDept]
+        }) as any[];
+
+        if (units.length === 0) {
+            return NextResponse.json({ activities: [], stats: { total: 0, onTrack: 0, inProgress: 0, delayed: 0 } });
+        }
+
+        const unitId = units[0].id;
+
+        // Fetch all activities for the mapped unit
         const activities = await query({
             query: `
                 SELECT 

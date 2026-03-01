@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import StatCard from '@/components/StatCard';
 
@@ -28,6 +29,7 @@ interface ActivityData {
 }
 
 export default function UnitStrategicActivities() {
+    const router = useRouter();
     const [data, setData] = useState<ActivityData | null>(null);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -229,10 +231,25 @@ export default function UnitStrategicActivities() {
                                             }}>{a.status}</span>
                                         </td>
                                         <td className="pe-4 text-end">
-                                            <button className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 fw-bold" style={{ fontSize: '.75rem' }}>
-                                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add_task</span>
-                                                <span>Tasks</span>
-                                            </button>
+                                            {a.total_tasks === 0 ? (
+                                                <button
+                                                    className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 fw-bold shadow-sm"
+                                                    style={{ fontSize: '.75rem', background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }}
+                                                    onClick={() => router.push(`/unit-head?pg=tasks&activity=${encodeURIComponent(a.title)}`)}
+                                                >
+                                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>add</span>
+                                                    <span>Create Task</span>
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 fw-bold"
+                                                    style={{ fontSize: '.75rem' }}
+                                                    onClick={() => router.push(`/unit-head?pg=tasks&activity=${encodeURIComponent(a.title)}`)}
+                                                >
+                                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>visibility</span>
+                                                    <span>View Tasks</span>
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))

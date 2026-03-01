@@ -11,7 +11,11 @@ interface Task {
     progress: number;
     dueDate: string;
     assignee_name: string;
+    assigned_to?: number;
     activity_title: string;
+    activity_id?: number;
+    description?: string;
+    reviewer_notes?: string;
 }
 
 interface KanbanData {
@@ -27,23 +31,46 @@ interface KanbanData {
     };
 }
 
-export default function UnitTasks() {
+interface UnitTasksProps {
+    initialActivity?: string;
+}
+
+export default function UnitTasks({ initialActivity }: UnitTasksProps) {
     const [data, setData] = useState<KanbanData | null>(null);
+    const [availableActivities, setAvailableActivities] = useState<{ id: number, title: string }[]>([]);
+    const [departmentUsers, setDepartmentUsers] = useState<{ id: number, full_name: string, role: string }[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activityFilter, setActivityFilter] = useState('All Strategic Activities');
+    const [activityFilter, setActivityFilter] = useState(initialActivity || 'All Strategic Activities');
     const [assigneeFilter, setAssigneeFilter] = useState('All Assignees');
 
+    // Modal States
+    const [showTaskModal, setShowTaskModal] = useState(false);
+    const [showEvaluateModal, setShowEvaluateModal] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Form States
+    const [taskForm, setTaskForm] = useState<Partial<Task>>({
+        priority: 'Medium'
+    });
+    const [evaluateForm, setEvaluateForm] = useState({ id: 0, status: 'Completed', notes: '' });
+
+    const fetchData = async () => {
+        try {
+            const [tasksRes, usersRes] = await Promise.all([
+                axios.get('/api/unit-head/tasks'),
+                axios.get('/api/users/department')
+            ]);
+            setData(tasksRes.data.kanban ? tasksRes.data : { ...tasksRes.data, kanban: { todo: [], inProgress: [], underReview: [], completed: [] } });
+            setAvailableActivities(tasksRes.data.availableActivities || []);
+            setDepartmentUsers(usersRes.data || []);
+        } catch (error) {
+            console.error('Error fetching unit tasks data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const response = await axios.get('/api/unit-head/tasks');
-                setData(response.data);
-            } catch (error) {
-                console.error('Error fetching unit tasks:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchData();
     }, []);
 
@@ -71,6 +98,67 @@ export default function UnitTasks() {
         return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     };
 
+    const handleOpenCreate = () => {
+        setTaskForm({ priority: 'Medium', status: 'Not Started' });
+        setShowTaskModal(true);
+    };
+
+    const handleOpenEdit = (task: Task) => {
+        setTaskForm({ ...task });
+        setShowTaskModal(true);
+    };
+
+    const handleOpenEvaluate = (task: Task) => {
+        setEvaluateForm({ id: task.id, status: 'Completed', notes: task.reviewer_notes || '' });
+        setShowEvaluateModal(true);
+    };
+
+    const handleSaveTask = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            if (taskForm.id) {
+                await axios.put('/api/unit-head/tasks', { ...taskForm });
+            } else {
+                await axios.post('/api/unit-head/tasks', {
+                    title: taskForm.title,
+                    parent_id: taskForm.activity_id,
+                    assigned_to: taskForm.assigned_to,
+                    end_date: taskForm.dueDate,
+                    priority: taskForm.priority,
+                    description: taskForm.description
+                });
+            }
+            setShowTaskModal(false);
+            await fetchData();
+        } catch (error) {
+            console.error('Error saving task:', error);
+            alert('Failed to save task. Please try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleEvaluateTask = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            await axios.put('/api/unit-head/tasks', {
+                id: evaluateForm.id,
+                status: evaluateForm.status,
+                reviewer_notes: evaluateForm.notes,
+                progress: evaluateForm.status === 'Completed' ? 100 : undefined
+            });
+            setShowEvaluateModal(false);
+            await fetchData();
+        } catch (error) {
+            console.error('Error evaluating task:', error);
+            alert('Failed to evaluate task. Please try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const columns = [
         { key: 'todo', label: 'To Do', color: '#64748b', bg: '#f1f5f9', tasks: filterTasks(data.kanban.todo) },
         { key: 'inProgress', label: 'In Progress', color: '#b45309', bg: '#fef9c3', tasks: filterTasks(data.kanban.inProgress) },
@@ -80,34 +168,44 @@ export default function UnitTasks() {
 
     return (
         <div id="page-tasks" className="page-section active-page">
-            <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3 p-3 bg-white rounded shadow-sm border">
-                <div className="d-flex align-items-center gap-2">
-                    <span className="material-symbols-outlined text-primary">filter_list</span>
-                    <span className="fw-bold text-dark">Filters:</span>
+            <div className="table-card shadow-sm mb-4">
+                <div className="table-card-header">
+                    <h5>
+                        <span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>view_kanban</span>
+                        Unit Tasks Kanban Board
+                    </h5>
+                    <div className="d-flex gap-3 flex-wrap align-items-center">
+                        <div className="d-flex align-items-center gap-2">
+                            <span className="material-symbols-outlined text-muted" style={{ fontSize: '18px' }}>filter_list</span>
+                            <span className="fw-bold text-dark small">Filters:</span>
+                        </div>
+                        <select
+                            className="form-select form-select-sm"
+                            style={{ width: '220px', backgroundColor: '#f8fafc', borderColor: '#e2e8f0', color: '#334155' }}
+                            value={activityFilter}
+                            onChange={(e) => setActivityFilter(e.target.value)}
+                        >
+                            <option>All Strategic Activities</option>
+                            {data.filters.activities.map(a => <option key={a}>{a}</option>)}
+                        </select>
+                        <select
+                            className="form-select form-select-sm"
+                            style={{ width: '180px', backgroundColor: '#f8fafc', borderColor: '#e2e8f0', color: '#334155' }}
+                            value={assigneeFilter}
+                            onChange={(e) => setAssigneeFilter(e.target.value)}
+                        >
+                            <option>All Assignees</option>
+                            {data.filters.assignees.map(a => <option key={a}>{a}</option>)}
+                        </select>
+                        <button
+                            className="btn btn-sm btn-primary d-flex align-items-center gap-2 ms-auto fw-bold shadow-sm"
+                            style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }}
+                            onClick={handleOpenCreate}
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span> New Task
+                        </button>
+                    </div>
                 </div>
-                <div className="d-flex gap-2 flex-wrap">
-                    <select
-                        className="form-select form-select-sm"
-                        style={{ width: '200px' }}
-                        value={activityFilter}
-                        onChange={(e) => setActivityFilter(e.target.value)}
-                    >
-                        <option>All Strategic Activities</option>
-                        {data.filters.activities.map(a => <option key={a}>{a}</option>)}
-                    </select>
-                    <select
-                        className="form-select form-select-sm"
-                        style={{ width: '160px' }}
-                        value={assigneeFilter}
-                        onChange={(e) => setAssigneeFilter(e.target.value)}
-                    >
-                        <option>All Assignees</option>
-                        {data.filters.assignees.map(a => <option key={a}>{a}</option>)}
-                    </select>
-                </div>
-                <button className="btn btn-sm btn-primary d-flex align-items-center gap-2 ms-auto fw-bold">
-                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>add</span> New Task
-                </button>
             </div>
 
             <div className="row g-3" style={{ minHeight: 'calc(100vh - 250px)' }}>
@@ -149,8 +247,12 @@ export default function UnitTasks() {
                                             <div className="text-muted mb-2 overflow-hidden text-truncate w-100" style={{ fontSize: '.72rem' }}>{task.activity_title}</div>
 
                                             {task.status === 'In Progress' && (
-                                                <div className="progress mb-3" style={{ height: '4px', borderRadius: '4px' }}>
-                                                    <div className="progress-bar bg-warning" style={{ width: `${task.progress}%` }}></div>
+                                                <div className="progress mb-3" style={{ height: '5px', borderRadius: '10px' }}>
+                                                    <div className="progress-bar" style={{
+                                                        width: `${task.progress}%`,
+                                                        background: task.progress > 75 ? '#10b981' : (task.progress > 30 ? '#f59e0b' : '#3b82f6'),
+                                                        borderRadius: '10px'
+                                                    }}></div>
                                                 </div>
                                             )}
 
@@ -166,17 +268,26 @@ export default function UnitTasks() {
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
                                                         color: '#fff',
-                                                        fontWeight: 'bold'
+                                                        fontWeight: 'bold',
+                                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                                                     }} title={task.assignee_name || 'Unassigned'}>
                                                         {task.assignee_name?.split(' ').map(n => n[0]).join('') || '?'}
                                                     </div>
-                                                    <span className="small text-muted" style={{ fontSize: '.65rem' }}>{task.assignee_name?.split(' ')[0] || 'Unassigned'}</span>
+                                                    <span className="fw-semibold text-dark" style={{ fontSize: '.7rem' }}>{task.assignee_name?.split(' ')[0] || 'Unassigned'}</span>
                                                 </div>
                                                 <div className="d-flex gap-1">
                                                     {col.key === 'underReview' ? (
-                                                        <button className="btn btn-xs btn-primary py-0 px-2 fw-bold" style={{ fontSize: '.65rem' }}>Evaluate</button>
+                                                        <button
+                                                            className="btn btn-xs btn-primary py-0 px-2 fw-bold shadow-sm"
+                                                            style={{ fontSize: '.65rem', background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }}
+                                                            onClick={(e) => { e.stopPropagation(); handleOpenEvaluate(task); }}
+                                                        >Evaluate</button>
                                                     ) : (
-                                                        <button className="btn btn-xs btn-light py-0 px-2" style={{ fontSize: '.65rem' }}>
+                                                        <button
+                                                            className="btn btn-xs btn-light bg-opacity-50 py-0 px-2 border"
+                                                            style={{ fontSize: '.65rem', color: '#64748b' }}
+                                                            onClick={(e) => { e.stopPropagation(); handleOpenEdit(task); }}
+                                                        >
                                                             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>edit</span>
                                                         </button>
                                                     )}
@@ -190,6 +301,121 @@ export default function UnitTasks() {
                     </div>
                 ))}
             </div>
+
+            {/* Create/Edit Task Modal UI */}
+            {showTaskModal && (
+                <div className="modal-backdrop fade show" style={{ zIndex: 1040 }}></div>
+            )}
+            <div className={`modal fade ${showTaskModal ? 'show d-block' : ''}`} tabIndex={-1} style={{ zIndex: 1050 }}>
+                <div className="modal-dialog modal-dialog-centered modal-lg">
+                    <div className="modal-content border-0 shadow-lg">
+                        <div className="modal-header border-bottom-0 pb-0">
+                            <h5 className="modal-title fw-bold text-dark d-flex align-items-center gap-2">
+                                <span className="material-symbols-outlined text-primary">{taskForm.id ? 'edit_square' : 'add_task'}</span>
+                                {taskForm.id ? 'Edit Task' : 'Create New Task'}
+                            </h5>
+                            <button type="button" className="btn-close" onClick={() => setShowTaskModal(false)}></button>
+                        </div>
+                        <div className="modal-body p-4">
+                            <form onSubmit={handleSaveTask} id="taskForm">
+                                <div className="row g-3">
+                                    <div className="col-12">
+                                        <label className="form-label fw-semibold small mb-1">Task Title <span className="text-danger">*</span></label>
+                                        <input type="text" className="form-control" required value={taskForm.title || ''} onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })} placeholder="E.g. Identify 5 new vendors" />
+                                    </div>
+                                    <div className="col-md-12">
+                                        <label className="form-label fw-semibold small mb-1">Parent Strategic Activity <span className="text-danger">*</span></label>
+                                        <select className="form-select" required value={taskForm.activity_id || ''} onChange={(e) => setTaskForm({ ...taskForm, activity_id: parseInt(e.target.value) })}>
+                                            <option value="">-- Select Parent Activity --</option>
+                                            {availableActivities.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="col-md-6">
+                                        <label className="form-label fw-semibold small mb-1">Assign To</label>
+                                        <select className="form-select" value={taskForm.assigned_to || ''} onChange={(e) => setTaskForm({ ...taskForm, assigned_to: parseInt(e.target.value) || undefined })}>
+                                            <option value="">Unassigned</option>
+                                            {departmentUsers.map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="col-md-3">
+                                        <label className="form-label fw-semibold small mb-1">Due Date <span className="text-danger">*</span></label>
+                                        <input type="date" className="form-control" required value={taskForm.dueDate ? new Date(taskForm.dueDate).toISOString().split('T')[0] : ''} onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })} />
+                                    </div>
+                                    <div className="col-md-3">
+                                        <label className="form-label fw-semibold small mb-1">Priority</label>
+                                        <select className="form-select" value={taskForm.priority || 'Medium'} onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value })}>
+                                            <option value="Low">Low</option>
+                                            <option value="Medium">Medium</option>
+                                            <option value="High">High</option>
+                                        </select>
+                                    </div>
+                                    <div className="col-12">
+                                        <label className="form-label fw-semibold small mb-1">Task Description / Instructions</label>
+                                        <textarea className="form-control" rows={3} value={taskForm.description || ''} onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })} placeholder="Detailed requirements for the assignee..."></textarea>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                        <div className="modal-footer bg-light border-top-0 py-3">
+                            <button type="button" className="btn btn-light fw-bold px-4" onClick={() => setShowTaskModal(false)}>Cancel</button>
+                            <button type="submit" form="taskForm" className="btn btn-primary fw-bold px-4 shadow-sm" style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }} disabled={isSubmitting}>
+                                {isSubmitting ? 'Saving...' : 'Save Task'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Evaluate Modal UI */}
+            {showEvaluateModal && (
+                <div className="modal-backdrop fade show" style={{ zIndex: 1040 }}></div>
+            )}
+            <div className={`modal fade ${showEvaluateModal ? 'show d-block' : ''}`} tabIndex={-1} style={{ zIndex: 1050 }}>
+                <div className="modal-dialog modal-dialog-centered">
+                    <div className="modal-content border-0 shadow-lg">
+                        <div className="modal-header border-bottom-0 pb-0">
+                            <h5 className="modal-title fw-bold text-dark d-flex align-items-center gap-2">
+                                <span className="material-symbols-outlined text-primary">rate_review</span>
+                                Evaluate Task Submission
+                            </h5>
+                            <button type="button" className="btn-close" onClick={() => setShowEvaluateModal(false)}></button>
+                        </div>
+                        <div className="modal-body p-4">
+                            <form onSubmit={handleEvaluateTask} id="evaluateForm">
+                                <div className="mb-4 p-3 bg-light rounded border border-info border-opacity-25">
+                                    <p className="small text-muted mb-1">The assignee has submitted this task for your review. Provide feedback and determine the final outcome.</p>
+                                </div>
+
+                                <label className="form-label fw-semibold small mb-2">Review Outcome <span className="text-danger">*</span></label>
+                                <div className="d-flex gap-3 mb-4">
+                                    <label className={`btn ${evaluateForm.status === 'Completed' ? 'btn-success' : 'btn-outline-success'} flex-fill d-flex flex-column align-items-center gap-1 p-3`}>
+                                        <input type="radio" name="status" className="d-none" checked={evaluateForm.status === 'Completed'} onChange={() => setEvaluateForm({ ...evaluateForm, status: 'Completed' })} />
+                                        <span className="material-symbols-outlined">check_circle</span>
+                                        <span className="fw-bold small">Approve & Complete</span>
+                                    </label>
+                                    <label className={`btn ${evaluateForm.status === 'In Progress' ? 'btn-warning text-dark border-warning' : 'btn-outline-warning text-dark'} flex-fill d-flex flex-column align-items-center gap-1 p-3`}>
+                                        <input type="radio" name="status" className="d-none" checked={evaluateForm.status === 'In Progress'} onChange={() => setEvaluateForm({ ...evaluateForm, status: 'In Progress' })} />
+                                        <span className="material-symbols-outlined">replay</span>
+                                        <span className="fw-bold small">Return for Edits</span>
+                                    </label>
+                                </div>
+
+                                <div className="mb-0">
+                                    <label className="form-label fw-semibold small mb-1">Reviewer Feedback / Comments</label>
+                                    <textarea className="form-control" rows={3} value={evaluateForm.notes || ''} onChange={(e) => setEvaluateForm({ ...evaluateForm, notes: e.target.value })} placeholder="Required if returning for edits..."></textarea>
+                                </div>
+                            </form>
+                        </div>
+                        <div className="modal-footer bg-light border-top-0 py-3">
+                            <button type="button" className="btn btn-light fw-bold px-4" onClick={() => setShowEvaluateModal(false)}>Cancel</button>
+                            <button type="submit" form="evaluateForm" className="btn btn-primary fw-bold px-4 shadow-sm" style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }} disabled={isSubmitting}>
+                                {isSubmitting ? 'Saving...' : 'Submit Evaluation'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     );
 }

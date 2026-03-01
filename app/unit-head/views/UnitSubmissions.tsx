@@ -12,6 +12,9 @@ interface Submission {
     submitted_at: string;
     status: string;
     progress: number;
+    score: number;
+    description: string;
+    reviewer_notes: string;
 }
 
 interface SubmissionData {
@@ -35,6 +38,7 @@ export default function UnitSubmissions() {
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('All Status');
     const [staffFilter, setStaffFilter] = useState('All Staff');
+    const [selectedItem, setSelectedItem] = useState<Submission | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -72,10 +76,124 @@ export default function UnitSubmissions() {
         return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
     };
 
+    const getStatusBadge = (status: string) => {
+        if (status === 'Pending') return <span className="status-badge" style={{ background: '#fef9c3', color: '#a16207' }}>Pending</span>;
+        if (status === 'Under Review') return <span className="status-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)' }}>Under Review</span>;
+        if (status === 'Completed') return <span className="status-badge" style={{ background: '#dcfce7', color: '#15803d' }}>Reviewed</span>;
+        if (status === 'Returned') return <span className="status-badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>Returned</span>;
+        return <span className="status-badge bg-light text-dark">{status}</span>;
+    };
+
     const staffMembers = [...new Set(data.submissions.map(s => s.staff_name))].filter(Boolean);
 
     return (
-        <div id="page-submissions" className="page-section active-page">
+        <div id="page-submissions" className="page-section active-page position-relative">
+            {/* View Details Modal */}
+            {selectedItem && (
+                <div className="modal-backdrop fade show" style={{ zIndex: 1040, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)' }}></div>
+            )}
+            <div className={`modal fade ${selectedItem ? 'show d-block' : ''}`} tabIndex={-1} style={{ zIndex: 1050 }}>
+                <div className="modal-dialog modal-dialog-centered modal-lg">
+                    <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px', overflow: 'hidden' }}>
+                        <div className="modal-header bg-light border-bottom border-light-subtle px-4 py-3">
+                            <h5 className="modal-title fw-black text-dark d-flex align-items-center gap-2">
+                                <span className="material-symbols-outlined text-primary">description</span>
+                                View Submission Details
+                            </h5>
+                            <button type="button" className="btn-close" onClick={() => setSelectedItem(null)}></button>
+                        </div>
+                        {selectedItem && (
+                            <div className="modal-body p-4">
+                                <div className="d-flex align-items-start gap-4 flex-wrap mb-4">
+                                    <div className="flex-fill">
+                                        <div className="d-flex align-items-center gap-2 mb-1">
+                                            <div className="fw-black text-dark" style={{ fontSize: '1.2rem' }}>{selectedItem.report_name}</div>
+                                            {getStatusBadge(selectedItem.status)}
+                                        </div>
+                                        <div className="text-muted" style={{ fontSize: '.9rem' }}>Activity: {selectedItem.activity_title}</div>
+                                        <div className="text-muted" style={{ fontSize: '.8rem', marginTop: '4px' }}>
+                                            Submitted By: <strong>{selectedItem.staff_name}</strong> on {formatDate(selectedItem.submitted_at)}
+                                        </div>
+                                    </div>
+
+                                    <div className="text-end">
+                                        <div className="text-dark fw-bold mb-1" style={{ fontSize: '.8rem', letterSpacing: '.05em' }}>REPORTED PROGRESS</div>
+                                        <div className="progress mx-auto" style={{ height: '8px', width: '120px', borderRadius: '4px' }}>
+                                            <div className="progress-bar bg-primary" style={{ width: `${selectedItem.progress || 0}%` }}></div>
+                                        </div>
+                                        <div className="fw-black text-primary mt-1">{selectedItem.progress || 0}%</div>
+                                    </div>
+                                </div>
+
+                                <div className="p-3 rounded-3 mb-4" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                    <div className="fw-bold text-dark mb-2" style={{ fontSize: '.85rem' }}>Report Description</div>
+                                    <p className="mb-0 text-secondary" style={{ fontSize: '.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                        {selectedItem.description || 'No description provided.'}
+                                    </p>
+                                </div>
+
+                                {/* Evaluation Section if reviewed */}
+                                {(selectedItem.status === 'Completed' || selectedItem.status === 'Returned') && (
+                                    <>
+                                        <h6 className="fw-bold border-bottom pb-2 mb-3 mt-4 text-dark">Unit Head Evaluation</h6>
+                                        <div className="row g-4 align-items-center">
+                                            <div className="col-12 col-md-3 text-center">
+                                                <div className="score-ring shadow-sm mx-auto mb-2" style={{
+                                                    width: '64px', height: '64px', borderRadius: '16px',
+                                                    background: selectedItem.status === 'Completed' ? '#dcfce7' : '#fee2e2',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontSize: '1.75rem', fontWeight: '900',
+                                                    color: selectedItem.status === 'Completed' ? '#16a34a' : '#dc2626',
+                                                    border: `2px solid ${selectedItem.status === 'Completed' ? '#bbf7d0' : '#fca5a5'}`
+                                                }}>
+                                                    {selectedItem.score || '-'}
+                                                </div>
+                                                <div className="d-flex gap-1 justify-content-center">
+                                                    {[1, 2, 3, 4, 5].map(s => (
+                                                        <span key={s} className="material-symbols-outlined" style={{
+                                                            fontSize: '14px',
+                                                            color: s <= (selectedItem.score || 0) ? '#f59e0b' : '#e2e8f0',
+                                                            fontVariationSettings: "'FILL' 1"
+                                                        }}>star</span>
+                                                    ))}
+                                                </div>
+                                                <div className="fw-bold text-muted small mt-1">{selectedItem.score ? `${selectedItem.score}/5 Rating` : 'No Score'}</div>
+                                            </div>
+                                            <div className="col-12 col-md-9">
+                                                <div className="p-3 rounded-3" style={{
+                                                    background: selectedItem.status === 'Completed' ? '#f0fdf4' : '#fff1f2',
+                                                    borderLeft: `4px solid ${selectedItem.status === 'Completed' ? '#22c55e' : '#ef4444'}`
+                                                }}>
+                                                    <div className="fw-bold text-dark mb-1" style={{ fontSize: '.85rem' }}>Reviewer Comments</div>
+                                                    <p className="mb-0 text-dark" style={{ fontSize: '.9rem', lineHeight: '1.6' }}>
+                                                        {selectedItem.reviewer_notes ? `"${selectedItem.reviewer_notes}"` : 'No additional comments provided.'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                        <div className="modal-footer bg-light border-top border-light-subtle px-4 py-3 d-flex justify-content-between">
+                            {selectedItem?.status === 'Pending' || selectedItem?.status === 'Under Review' ? (
+                                <button type="button" className="btn btn-primary fw-bold shadow-sm d-flex align-items-center gap-2" style={{ borderRadius: '8px' }} onClick={() => {
+                                    setSelectedItem(null);
+                                    const params = new URLSearchParams(window.location.search);
+                                    params.set('pg', 'evaluations');
+                                    window.history.pushState(null, '', `?${params.toString()}`);
+                                    window.dispatchEvent(new Event('popstate'));
+                                }}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>rate_review</span>
+                                    Evaluate Submission
+                                </button>
+                            ) : <div></div>}
+                            <button type="button" className="btn btn-secondary fw-bold px-4" style={{ borderRadius: '8px' }} onClick={() => setSelectedItem(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div className="row g-4 mb-4">
                 <div className="col-12 col-sm-6 col-xl-3">
                     <StatCard
@@ -202,11 +320,19 @@ export default function UnitSubmissions() {
                                                 </td>
                                                 <td className="pe-4 text-end">
                                                     {s.status === 'Pending' || s.status === 'Under Review' ? (
-                                                        <button className="btn btn-sm btn-primary fw-bold py-1 px-3 d-inline-flex align-items-center gap-1" style={{ fontSize: '.74rem', borderRadius: '8px' }}>
-                                                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>rate_review</span> Evaluate
+                                                        <button
+                                                            className="btn btn-sm btn-primary fw-bold py-1 px-3 d-inline-flex align-items-center gap-1 shadow-sm"
+                                                            style={{ fontSize: '.74rem', borderRadius: '8px' }}
+                                                            onClick={() => setSelectedItem(s)}
+                                                        >
+                                                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>rate_review</span> View
                                                         </button>
                                                     ) : (
-                                                        <button className="btn btn-sm btn-outline-secondary fw-bold py-1 px-3 d-inline-flex align-items-center gap-1" style={{ fontSize: '.74rem', borderRadius: '8px' }}>
+                                                        <button
+                                                            className="btn btn-sm btn-outline-secondary fw-bold py-1 px-3 d-inline-flex align-items-center gap-1 shadow-sm"
+                                                            style={{ fontSize: '.74rem', borderRadius: '8px', background: '#fff' }}
+                                                            onClick={() => setSelectedItem(s)}
+                                                        >
                                                             <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>visibility</span> View
                                                         </button>
                                                     )}
@@ -237,7 +363,7 @@ export default function UnitSubmissions() {
                                 <div className="text-center py-4 text-muted small">No recent activity.</div>
                             ) : (
                                 data.recentActivity.map((activity, idx) => (
-                                    <div key={idx} className="timeline-item mb-4 pb-4 border-start ps-4 position-relative" style={{ borderLeftStyle: 'dashed !important' }}>
+                                    <div key={idx} className="timeline-item mb-4 pb-4 border-start ps-4 position-relative" style={{ borderLeftStyle: 'dashed' }}>
                                         <div className="timeline-dot position-absolute" style={{
                                             left: '-10px',
                                             top: '0',

@@ -11,8 +11,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "MUBS Super Admin Dashboard",
-  description: "Strategic Management Dashboard",
+  title: "MUBS SPS",
+  description: "Strategic Plan System",
 };
 
 export default function RootLayout({

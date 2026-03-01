@@ -14,12 +14,12 @@ export default function IdleTimeout() {
     const handleLogout = useCallback(async () => {
         try {
             await fetch('/api/auth/logout', { method: 'POST' });
-            router.push('/');
+            window.location.href = '/';
         } catch (error) {
             console.error('Logout failed', error);
-            router.push('/');
+            window.location.href = '/';
         }
-    }, [router]);
+    }, []);
 
     const resetTimer = useCallback(() => {
         if (timeoutRef.current) {

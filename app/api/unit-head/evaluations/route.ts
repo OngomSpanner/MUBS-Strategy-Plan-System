@@ -1,9 +1,32 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verifyToken } from '@/lib/auth';
 
 export async function GET() {
     try {
-        const unitId = 1;
+        const cookieStore = await cookies();
+        const token = cookieStore.get('token')?.value;
+        if (!token) throw new Error('Unauthorized');
+
+        const decoded = verifyToken(token) as any;
+        if (!decoded || !decoded.userId) throw new Error('Invalid token');
+
+        const userRec = await query({
+            query: 'SELECT department FROM users WHERE id = ?',
+            values: [decoded.userId]
+        }) as any[];
+
+        if (!userRec.length || !userRec[0].department) {
+            return NextResponse.json({ pending: [], completed: [] });
+        }
+
+        const unitMapped = await query({
+            query: 'SELECT id FROM units WHERE name = ?',
+            values: [userRec[0].department]
+        }) as any[];
+
+        const unitId = unitMapped.length > 0 ? unitMapped[0].id : 0;
 
         // Fetch evaluations
         const evaluations = await query({
@@ -16,7 +39,9 @@ export async function GET() {
                     sa.updated_at as submitted_at,
                     sa.status,
                     sa.progress,
-                    sa.description as report_summary
+                    sa.description as report_summary,
+                    sa.score,
+                    sa.reviewer_notes
                 FROM strategic_activities sa
                 LEFT JOIN strategic_activities p ON sa.parent_id = p.id
                 LEFT JOIN users u ON sa.assigned_to = u.id

@@ -14,13 +14,14 @@ interface UnitHeadPageProps {
 export default async function UnitHeadPage({ searchParams }: UnitHeadPageProps) {
     const params = await searchParams;
     const pg = params?.pg || 'dashboard';
+    const activityParam = params?.activity as string | undefined;
 
     const renderContent = () => {
         switch (pg) {
             case 'activities':
                 return <UnitStrategicActivities />;
             case 'tasks':
-                return <UnitTasks />;
+                return <UnitTasks initialActivity={activityParam} />;
             case 'staff':
                 return <UnitStaff />;
             case 'submissions':

@@ -1,57 +1,57 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verifyToken } from '@/lib/auth';
 
 export async function PATCH(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const { id } = await params;
     try {
-        const body = await request.json();
-        const { status, reviewer_notes, implementation_status } = body;
+        const { id } = await params;
+        const cookieStore = await cookies();
+        const token = cookieStore.get('token')?.value;
 
-        let queryStr = 'UPDATE committee_proposals SET status = ?, reviewer_notes = ?, reviewed_date = CURDATE()';
-        let values = [status, reviewer_notes ?? null];
-
-        if (implementation_status) {
-            queryStr += ', implementation_status = ?';
-            values.push(implementation_status);
+        if (!token) {
+            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         }
 
-        queryStr += ' WHERE id = ?';
-        values.push(id);
+        const decoded = verifyToken(token) as any;
+        if (!decoded || !decoded.userId) {
+            return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
+        }
 
-        await query({
-            query: queryStr,
-            values: values
-        });
+        const body = await request.json();
+        const { status, reviewer_notes } = body;
 
-        return NextResponse.json({ message: 'Proposal updated successfully' });
-    } catch (error) {
-        console.error('Error updating proposal:', error);
+        if (!status) {
+            return NextResponse.json({ message: 'Status is required' }, { status: 400 });
+        }
+
+        // Validate that it's an allowed status
+        if (!['Approved', 'Rejected', 'Edit Requested'].includes(status)) {
+            return NextResponse.json({ message: 'Invalid status type for review' }, { status: 400 });
+        }
+
+        const updateResult = await query({
+            query: `
+                UPDATE strategic_activities 
+                SET status = ?, reviewer_notes = ? 
+                WHERE id = ? AND parent_id IS NULL
+            `,
+            values: [status, reviewer_notes || null, id]
+        }) as any;
+
+        if (updateResult.affectedRows === 0) {
+            return NextResponse.json({ message: 'Proposal not found or access denied' }, { status: 404 });
+        }
+
+        return NextResponse.json({ message: `Proposal ${status.toLowerCase()} successfully` });
+
+    } catch (error: any) {
+        console.error('Admin Update Proposal API Error:', error);
         return NextResponse.json(
-            { message: 'Error updating proposal' },
-            { status: 500 }
-        );
-    }
-}
-
-export async function DELETE(
-    request: Request,
-    { params }: { params: Promise<{ id: string }> }
-) {
-    const { id } = await params;
-    try {
-        await query({
-            query: 'DELETE FROM committee_proposals WHERE id = ?',
-            values: [id]
-        });
-
-        return NextResponse.json({ message: 'Proposal deleted successfully' });
-    } catch (error) {
-        console.error('Error deleting proposal:', error);
-        return NextResponse.json(
-            { message: 'Error deleting proposal' },
+            { message: 'Error updating proposal status', detail: error.message },
             { status: 500 }
         );
     }

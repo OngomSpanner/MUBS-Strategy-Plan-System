@@ -1,11 +1,37 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 
 export default function CommPropose() {
     const [minutesPreview, setMinutesPreview] = useState(false);
     const [evidenceLink, setEvidenceLink] = useState('');
     const [evidenceLinkPreview, setEvidenceLinkPreview] = useState(false);
+    const [units, setUnits] = useState<{ id: number, name: string }[]>([]);
+
+    // Form State
+    const [title, setTitle] = useState('');
+    const [pillar, setPillar] = useState('');
+    const [priority, setPriority] = useState('Medium');
+    const [description, setDescription] = useState('');
+    const [kpi, setKpi] = useState('');
+    const [suggestedUnit, setSuggestedUnit] = useState<number | ''>('');
+    const [meetingRef, setMeetingRef] = useState('');
+    const [deadline, setDeadline] = useState('');
+    const [isConfirmed, setIsConfirmed] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        const fetchUnits = async () => {
+            try {
+                const res = await axios.get('/api/units');
+                setUnits(res.data);
+            } catch (err) {
+                console.error("Failed to fetch units", err);
+            }
+        };
+        fetchUnits();
+    }, []);
 
     const handlePreviewEvidenceLink = () => {
         if (evidenceLink) {
@@ -15,8 +41,49 @@ export default function CommPropose() {
         }
     };
 
-    const submitProposal = () => {
-        alert("Proposal submitted successfully! It is now pending Admin review.");
+    const submitProposal = async () => {
+        if (!title || !description || !meetingRef) {
+            alert("Please fill in all strictly required fields: Title, Description, and Meeting Reference.");
+            return;
+        }
+
+        if (!minutesPreview) {
+            alert("Please attach meeting minutes before submitting.");
+            return;
+        }
+
+        if (!isConfirmed) {
+            alert("You must confirm the declaration tickbox at the bottom before submitting.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            await axios.post('/api/comm/proposals', {
+                title,
+                pillar,
+                priority,
+                description,
+                kpi,
+                suggested_unit_id: suggestedUnit ? suggestedUnit : null,
+                meeting_reference: meetingRef,
+                deadline: deadline || null,
+                evidence_url: evidenceLink || 'simulated-minutes-doc.pdf'
+            });
+
+            alert("Proposal submitted successfully! It is now pending Admin review.");
+
+            // Reset form
+            setTitle(''); setPillar(''); setPriority('Medium'); setDescription('');
+            setKpi(''); setSuggestedUnit(''); setMeetingRef(''); setDeadline('');
+            setEvidenceLink(''); setEvidenceLinkPreview(false); setMinutesPreview(false); setIsConfirmed(false);
+
+        } catch (error: any) {
+            console.error("Error submitting proposal:", error);
+            alert("Failed to submit proposal. " + (error.response?.data?.message || ""));
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -40,55 +107,52 @@ export default function CommPropose() {
                             <div className="row g-3">
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small">Activity / Proposal Title <span className="text-danger">*</span></label>
-                                    <input type="text" className="form-control" placeholder="e.g. Establish Post-Graduate Research Centre" />
+                                    <input type="text" className="form-control" placeholder="e.g. Establish Post-Graduate Research Centre" value={title} onChange={(e) => setTitle(e.target.value)} />
                                 </div>
                                 <div className="col-md-6">
-                                    <label className="form-label fw-black text-dark small">Strategic Pillar <span className="text-danger">*</span></label>
-                                    <select className="form-select">
+                                    <label className="form-label fw-black text-dark small">Strategic Pillar</label>
+                                    <select className="form-select" value={pillar} onChange={(e) => setPillar(e.target.value)}>
                                         <option value="">— Select pillar —</option>
-                                        <option>Teaching &amp; Learning</option>
-                                        <option>Research &amp; Innovation</option>
-                                        <option>Infrastructure</option>
-                                        <option>Industry Partnerships</option>
-                                        <option>Governance</option>
-                                        <option>Finance &amp; Resources</option>
+                                        <option value="Teaching & Learning">Teaching &amp; Learning</option>
+                                        <option value="Research & Innovation">Research &amp; Innovation</option>
+                                        <option value="Infrastructure">Infrastructure</option>
+                                        <option value="Industry Partnerships">Industry Partnerships</option>
+                                        <option value="Governance">Governance</option>
+                                        <option value="Finance & Resources">Finance &amp; Resources</option>
                                     </select>
                                 </div>
                                 <div className="col-md-6">
                                     <label className="form-label fw-black text-dark small">Priority Level</label>
-                                    <select className="form-select">
-                                        <option>High</option>
-                                        <option>Medium</option>
-                                        <option>Low</option>
+                                    <select className="form-select" value={priority} onChange={(e) => setPriority(e.target.value)}>
+                                        <option value="High">High</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="Low">Low</option>
                                     </select>
                                 </div>
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small">Description / Rationale <span className="text-danger">*</span></label>
-                                    <textarea className="form-control" rows={4} placeholder="Describe what this activity involves, why it is proposed, and what outcome it aims to achieve based on the committee's discussion..."></textarea>
+                                    <textarea className="form-control" rows={4} placeholder="Describe what this activity involves, why it is proposed, and what outcome it aims to achieve based on the committee's discussion..." value={description} onChange={(e) => setDescription(e.target.value)}></textarea>
                                 </div>
                                 <div className="col-md-6">
                                     <label className="form-label fw-black text-dark small">Proposed KPI / Target</label>
-                                    <input type="text" className="form-control" placeholder="e.g. 50 post-grad students enrolled by Dec 2025" />
+                                    <input type="text" className="form-control" placeholder="e.g. 50 post-grad students enrolled by Dec 2025" value={kpi} onChange={(e) => setKpi(e.target.value)} />
                                 </div>
                                 <div className="col-md-6">
                                     <label className="form-label fw-black text-dark small">Suggested Implementation Unit</label>
-                                    <select className="form-select">
+                                    <select className="form-select" value={suggestedUnit} onChange={(e) => setSuggestedUnit(e.target.value ? parseInt(e.target.value) : '')}>
                                         <option value="">— Optional suggestion —</option>
-                                        <option>Faculty of Computing</option>
-                                        <option>Faculty of Commerce</option>
-                                        <option>Research &amp; Innovation</option>
-                                        <option>Finance &amp; Administration</option>
-                                        <option>Library</option>
-                                        <option>Student Affairs</option>
+                                        {units.map(u => (
+                                            <option key={u.id} value={u.id}>{u.name}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="col-md-6">
                                     <label className="form-label fw-black text-dark small">Meeting / Session Reference <span className="text-danger">*</span></label>
-                                    <input type="text" className="form-control" placeholder="e.g. Meeting #9 · 12 Apr 2025" />
+                                    <input type="text" className="form-control" placeholder="e.g. Meeting #9 · 12 Apr 2025" value={meetingRef} onChange={(e) => setMeetingRef(e.target.value)} />
                                 </div>
                                 <div className="col-md-6">
                                     <label className="form-label fw-black text-dark small">Proposed Deadline</label>
-                                    <input type="date" className="form-control" />
+                                    <input type="date" className="form-control" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
                                 </div>
 
                                 <div className="col-12"><hr style={{ borderColor: '#e2e8f0' }} /></div>
@@ -152,7 +216,7 @@ export default function CommPropose() {
                                 <div className="col-12">
                                     <div className="p-3 rounded" style={{ background: '#f5f3ff', border: '1px solid #ede9fe' }}>
                                         <div className="form-check">
-                                            <input className="form-check-input" type="checkbox" id="declaration" style={{ borderColor: '#7c3aed' }} />
+                                            <input className="form-check-input" type="checkbox" id="declaration" style={{ borderColor: '#7c3aed' }} checked={isConfirmed} onChange={(e) => setIsConfirmed(e.target.checked)} />
                                             <label className="form-check-label" htmlFor="declaration" style={{ fontSize: '.82rem', color: '#4c1d95', fontWeight: 600 }}>
                                                 I confirm that this proposal is based on a formal committee discussion and that the meeting minutes attached accurately reflect the decision made. I am authorised to submit on behalf of the Academic Board Committee.
                                             </label>
@@ -161,8 +225,9 @@ export default function CommPropose() {
                                 </div>
 
                                 <div className="col-12 d-flex gap-3 flex-wrap mt-1">
-                                    <button className="btn fw-bold text-white px-4 py-2" style={{ background: '#7c3aed' }} onClick={submitProposal}>
-                                        <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>send</span>Submit Proposal
+                                    <button className="btn fw-bold text-white px-4 py-2" style={{ background: '#7c3aed' }} onClick={submitProposal} disabled={isSubmitting}>
+                                        <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>send</span>
+                                        {isSubmitting ? 'Submitting...' : 'Submit Proposal'}
                                     </button>
                                     <button className="btn btn-outline-secondary fw-bold" onClick={() => alert('Draft saved successfully.')}>
                                         <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>save</span>Save Draft

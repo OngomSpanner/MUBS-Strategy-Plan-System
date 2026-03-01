@@ -29,15 +29,15 @@ export default function LoginPage() {
         throw new Error(data.message || 'Invalid email or password');
       }
 
-      const role = data.user.role;
+      const role = data.user.activeRole || data.user.roles[0];
 
-      if (role === 'Super Admin' || role === 'Manager') {
+      if (role === 'Super Admin' || role === 'Manager' || role === 'Strategy Manager' || role === 'System Administrator') {
         router.push('/admin');
       } else if (role === 'Committee Member') {
         router.push('/comm');
       } else if (role === 'Principal') {
         router.push('/principal');
-      } else if (role === 'Unit Head') {
+      } else if (role === 'Unit Head' || role === 'HOD') {
         router.push('/unit-head');
       } else {
         router.push('/staff');
