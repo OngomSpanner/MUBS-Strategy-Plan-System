@@ -1,4 +1,5 @@
-"use client";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface TopbarProps {
   pageTitle: string;
@@ -6,6 +7,58 @@ interface TopbarProps {
 }
 
 export default function Topbar({ pageTitle, toggleSidebar }: TopbarProps) {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [activeRole, setActiveRole] = useState<string>('');
+  const [roles, setRoles] = useState<string[]>([]);
+  const [loadingRole, setLoadingRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Fetch user context
+    const fetchUser = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data.user);
+          setActiveRole(data.activeRole);
+          setRoles(data.roles);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user', error);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  const handleRoleSwitch = async (newRole: string) => {
+    setLoadingRole(newRole);
+    try {
+      const res = await fetch('/api/auth/switch-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newRole })
+      });
+
+      if (res.ok) {
+        // Force hard redirect to the new role's dashboard to reload everything
+        let redirectPath = '/staff';
+        if (newRole === 'Super Admin' || newRole === 'Manager') redirectPath = '/admin';
+        else if (newRole === 'Committee Member') redirectPath = '/comm';
+        else if (newRole === 'Principal') redirectPath = '/principal';
+        else if (newRole === 'Unit Head') redirectPath = '/unit-head';
+
+        window.location.href = redirectPath;
+      } else {
+        alert('Failed to switch role');
+        setLoadingRole(null);
+      }
+    } catch (error) {
+      console.error('Role switch error', error);
+      alert('Failed to switch role');
+      setLoadingRole(null);
+    }
+  };
 
   return (
     <header className="topbar">
@@ -65,8 +118,12 @@ export default function Topbar({ pageTitle, toggleSidebar }: TopbarProps) {
 
         <button className="avatar-btn" data-bs-toggle="dropdown">
           <div className="text-end d-none d-sm-block">
-            <div className="text-white fw-bold" style={{ fontSize: '.8rem', lineHeight: '1.1' }}>Admin John</div>
-            <div className="text-white-50" style={{ fontSize: '.68rem' }}>Super Administrator</div>
+            <div className="text-white fw-bold" style={{ fontSize: '.8rem', lineHeight: '1.1' }}>
+              {user ? user.full_name : 'Loading...'}
+            </div>
+            <div className="text-white-50" style={{ fontSize: '.68rem' }}>
+              {activeRole || '...'}
+            </div>
           </div>
           <div style={{
             width: '36px',
@@ -84,17 +141,36 @@ export default function Topbar({ pageTitle, toggleSidebar }: TopbarProps) {
 
         <ul className="dropdown-menu dropdown-menu-end shadow">
           <li><h6 className="dropdown-header text-muted small">Signed in as</h6></li>
-          <li><span className="dropdown-item-text fw-bold text-dark">Admin John</span></li>
-          <li><hr className="dropdown-divider" /></li>
-          <li><a className="dropdown-item" href="#">
-            <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>person</span>My Profile
-          </a></li>
-          <li><a className="dropdown-item" href="#">
-            <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>settings</span>Account Settings
-          </a></li>
+          <li><span className="dropdown-item-text fw-bold text-dark">{user ? user.full_name : '...'}</span></li>
+
+          {roles.length > 1 && (
+            <>
+              <li><hr className="dropdown-divider" /></li>
+              <li><h6 className="dropdown-header text-muted small pb-1">Switch Role</h6></li>
+              {roles.map(role => (
+                role !== activeRole ? (
+                  <li key={role}>
+                    <button
+                      className="dropdown-item d-flex align-items-center justify-content-between"
+                      onClick={() => handleRoleSwitch(role)}
+                      disabled={loadingRole === role}
+                    >
+                      <span>View as {role}</span>
+                      {loadingRole === role && <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>}
+                    </button>
+                  </li>
+                ) : null
+              ))}
+            </>
+          )}
+
           <li><hr className="dropdown-divider" /></li>
           <li>
-            <a className="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#logoutModal">
+            <a className="dropdown-item text-danger" href="#" onClick={async (e) => {
+              e.preventDefault();
+              await fetch('/api/auth/logout', { method: 'POST' });
+              window.location.href = '/';
+            }}>
               <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>logout</span>Logout
             </a>
           </li>

@@ -17,25 +17,33 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Simulate authentication check
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-      // Basic role-based routing simulation based on email
-      if (email.includes('admin')) {
-        router.push('/admin');
-      } else if (email.includes('staff')) {
-        router.push('/staff');
-      } else if (email.includes('committee')) {
-        router.push('/committee');
-      } else if (email.includes('unit')) {
-        router.push('/unit-head');
-      } else if (email.includes('principal')) {
-        router.push('/principal');
-      } else {
-        router.push('/admin'); // Default fallback
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Invalid email or password');
       }
-    } catch (err) {
-      setError('Invalid email or password');
+
+      const role = data.user.role;
+
+      if (role === 'Super Admin' || role === 'Manager') {
+        router.push('/admin');
+      } else if (role === 'Committee Member') {
+        router.push('/comm');
+      } else if (role === 'Principal') {
+        router.push('/principal');
+      } else if (role === 'Unit Head') {
+        router.push('/unit-head');
+      } else {
+        router.push('/staff');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Invalid email or password');
       setLoading(false);
     }
   };

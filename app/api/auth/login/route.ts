@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { generateToken } from '@/lib/auth';
@@ -39,15 +40,47 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate token
-    const token = generateToken(user.id, user.role);
+    // Handle multiple roles (comma separated)
+    const rolesArray = user.role.split(',').map((r: string) => r.trim());
+    const activeRole = rolesArray[0];
 
-    // Remove password from response
+    // Generate token with active role and all available roles
+    const token = generateToken(user.id, activeRole);
+
+    // Set HTTP-only cookie for secure token
+    const cookieStore = await cookies();
+    cookieStore.set({
+      name: 'token',
+      value: token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24, // 1 day
+      path: '/',
+    });
+
+    // Set non-HTTP-only active_role cookie for edge middleware and client reading
+    cookieStore.set({
+      name: 'active_role',
+      value: activeRole,
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24, // 1 day
+      path: '/',
+    });
+
+    // Remove password from response and inject active stats
     const { password_hash, ...userWithoutPassword } = user;
+    const userPayload = {
+      ...userWithoutPassword,
+      roles: rolesArray,
+      activeRole: activeRole
+    };
 
     return NextResponse.json({
       message: 'Login successful',
-      user: userWithoutPassword,
+      user: userPayload,
       token
     });
 
