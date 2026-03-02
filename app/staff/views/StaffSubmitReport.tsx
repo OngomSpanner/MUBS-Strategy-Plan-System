@@ -1,18 +1,116 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function StaffSubmitReport() {
-    const [taskVal, setTaskVal] = useState('');
-    const [progressVal, setProgressVal] = useState('40');
+    const [tasks, setTasks] = useState<any[]>([]);
+    const [recentSubmissions, setRecentSubmissions] = useState<any[]>([]);
+    const [loadingTasks, setLoadingTasks] = useState(true);
+    const [loadingSubmit, setLoadingSubmit] = useState(false);
 
-    const taskInfoData: { [key: string]: { title: string, due: string } } = {
-        overdue: { title: 'Write Tender for Computers — Computer Lab Upgrade', due: '⚠ Overdue · Was due 15 Apr 2025. Submit immediately.' },
-        lan: { title: 'Configure LAN Switches — Digital Learning Infrastructure', due: 'Due: 21 Apr 2025 · 2 days remaining' },
-        switches: { title: 'Procure Network Switches (x4) — Digital Learning Infrastructure', due: 'Due: 20 Apr 2025 · 1 day remaining' },
-        safety: { title: 'Draft Lab Safety Guidelines — Digital Learning Infrastructure', due: 'Due: 22 Apr 2025 · 3 days remaining' },
-        inventory: { title: 'Create Inventory Checklist — Digital Learning Infrastructure', due: 'Due: 25 Apr 2025 · 6 days remaining' },
+    const [taskVal, setTaskVal] = useState('');
+    const [progressVal, setProgressVal] = useState('0');
+    const [reportType, setReportType] = useState('progress');
+    const [description, setDescription] = useState('');
+    const [evidenceLink, setEvidenceLink] = useState('');
+    const [attachedFile, setAttachedFile] = useState<File | null>(null);
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const fetchData = async () => {
+        try {
+            const [tasksRes, subsRes] = await Promise.all([
+                fetch('/api/staff/tasks'),
+                fetch('/api/staff/submissions')
+            ]);
+            if (tasksRes.ok) {
+                const tr = await tasksRes.json();
+                setTasks(tr.tasks || []);
+            }
+            if (subsRes.ok) {
+                const sr = await subsRes.json();
+                setRecentSubmissions(sr.submissions || []);
+            }
+        } catch (err) {
+            console.error('Error fetching data:', err);
+        } finally {
+            setLoadingTasks(false);
+        }
     };
+
+    const handleTaskChange = (val: string) => {
+        setTaskVal(val);
+        const t = tasks.find(x => x.id.toString() === val);
+        if (t) {
+            setProgressVal(t.progress?.toString() || '0');
+        } else {
+            setProgressVal('0');
+        }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const file = e.target.files[0];
+            if (file.size > 10 * 1024 * 1024) {
+                alert('File too large. Max 10MB.');
+                return;
+            }
+            setAttachedFile(file);
+        }
+    };
+
+    const handleSubmit = async (isDraft: boolean) => {
+        if (!taskVal) {
+            alert("Please select a task.");
+            return;
+        }
+        if (!description) {
+            alert("Please provide report details.");
+            return;
+        }
+
+        setLoadingSubmit(true);
+        try {
+            const formData = new FormData();
+            formData.append('taskId', taskVal);
+            formData.append('progress', progressVal);
+            formData.append('reportType', reportType);
+            formData.append('description', description);
+            formData.append('evidenceLink', evidenceLink);
+            formData.append('isDraft', isDraft ? 'true' : 'false');
+            if (attachedFile) {
+                formData.append('file', attachedFile);
+            }
+
+            const res = await fetch('/api/staff/submissions', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Error saving report');
+
+            alert(isDraft ? 'Draft saved successfully!' : 'Report submitted successfully!');
+
+            // reset form if not draft
+            if (!isDraft) {
+                setTaskVal('');
+                setProgressVal('0');
+                setDescription('');
+                setEvidenceLink('');
+                setReportType('progress');
+                setAttachedFile(null);
+                fetchData(); // refresh sidebar
+            }
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setLoadingSubmit(false);
+        }
+    };
+
+    const selectedTask = tasks.find(t => t.id.toString() === taskVal);
 
     return (
         <div className="content-area w-100">
@@ -28,22 +126,33 @@ export default function StaffSubmitReport() {
                                 {/* Task select */}
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small">Select Task <span className="text-danger">*</span></label>
-                                    <select className="form-select" id="taskSelect" value={taskVal} onChange={(e) => setTaskVal(e.target.value)}>
+                                    <select
+                                        className="form-select"
+                                        id="taskSelect"
+                                        value={taskVal}
+                                        onChange={(e) => handleTaskChange(e.target.value)}
+                                        disabled={loadingTasks || loadingSubmit}
+                                    >
                                         <option value="">— Choose a task —</option>
-                                        <option value="overdue">Write Tender for Computers ⚠ OVERDUE</option>
-                                        <option value="lan">Configure LAN Switches</option>
-                                        <option value="switches">Procure Network Switches</option>
-                                        <option value="safety">Draft Lab Safety Guidelines</option>
-                                        <option value="inventory">Create Inventory Checklist</option>
+                                        {tasks.filter(t => t.status !== 'Completed').map(t => (
+                                            <option key={t.id} value={t.id.toString()}>
+                                                {t.title} {t.daysLeft < 0 ? '⚠ OVERDUE' : ''}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
 
                                 {/* Task info callout */}
-                                {taskVal && taskInfoData[taskVal] && (
+                                {selectedTask && (
                                     <div className="col-12" id="taskInfoBox">
                                         <div className="p-3 rounded" style={{ background: '#f0f7ff', border: '1px solid #bfdbfe', borderLeft: '4px solid var(--mubs-blue)' }}>
-                                            <div className="fw-bold text-dark mb-1" style={{ fontSize: '.82rem' }} id="taskInfoTitle">{taskInfoData[taskVal].title}</div>
-                                            <div className="text-muted" style={{ fontSize: '.75rem' }} id="taskInfoDue">{taskInfoData[taskVal].due}</div>
+                                            <div className="fw-bold text-dark mb-1" style={{ fontSize: '.82rem' }} id="taskInfoTitle">{selectedTask.title}</div>
+                                            <div className="text-muted" style={{ fontSize: '.75rem' }} id="taskInfoDue">
+                                                {selectedTask.daysLeft < 0
+                                                    ? `⚠ Overdue · Was due ${new Date(selectedTask.dueDate).toLocaleDateString()}`
+                                                    : `Due: ${new Date(selectedTask.dueDate).toLocaleDateString()} · ${selectedTask.daysLeft} days remaining`
+                                                }
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -52,22 +161,47 @@ export default function StaffSubmitReport() {
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small">Report Type</label>
                                     <div className="d-flex gap-3 flex-wrap">
-                                        <div className="form-check"><input className="form-check-input" type="radio" name="reportType" id="rt1" value="progress" defaultChecked /><label className="form-check-label small fw-bold" htmlFor="rt1">Progress Update</label></div>
-                                        <div className="form-check"><input className="form-check-input" type="radio" name="reportType" id="rt2" value="completion" /><label className="form-check-label small fw-bold" htmlFor="rt2">Completion Report</label></div>
-                                        <div className="form-check"><input className="form-check-input" type="radio" name="reportType" id="rt3" value="issue" /><label className="form-check-label small fw-bold" htmlFor="rt3">Issue / Blocker</label></div>
+                                        <div className="form-check">
+                                            <input className="form-check-input" type="radio" name="reportType" id="rt1" value="progress"
+                                                checked={reportType === 'progress'}
+                                                onChange={(e) => setReportType(e.target.value)}
+                                            />
+                                            <label className="form-check-label small fw-bold" htmlFor="rt1">Progress Update</label>
+                                        </div>
+                                        <div className="form-check">
+                                            <input className="form-check-input" type="radio" name="reportType" id="rt2" value="completion"
+                                                checked={reportType === 'completion'}
+                                                onChange={(e) => setReportType(e.target.value)}
+                                            />
+                                            <label className="form-check-label small fw-bold" htmlFor="rt2">Completion Report</label>
+                                        </div>
+                                        <div className="form-check">
+                                            <input className="form-check-input" type="radio" name="reportType" id="rt3" value="issue"
+                                                checked={reportType === 'issue'}
+                                                onChange={(e) => setReportType(e.target.value)}
+                                            />
+                                            <label className="form-check-label small fw-bold" htmlFor="rt3">Issue / Blocker</label>
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* Progress slider */}
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small">Current Progress: <span id="progressVal" className="text-primary">{progressVal}</span>%</label>
-                                    <input type="range" className="form-range" min="0" max="100" step="5" value={progressVal} onChange={(e) => setProgressVal(e.target.value)} />
+                                    <input type="range" className="form-range" min="0" max="100" step="5" value={progressVal} onChange={(e) => setProgressVal(e.target.value)} disabled={loadingSubmit} />
                                 </div>
 
                                 {/* Description */}
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small">Report Details <span className="text-danger">*</span></label>
-                                    <textarea className="form-control" rows={5} placeholder="Describe what was done, what remains, any challenges encountered...&#10;&#10;e.g. Installed and configured 2 of 4 network switches in Lab A. Encountered IP conflict issue — resolved by reassigning VLAN. Lab B configuration pending hardware delivery on 22 Apr."></textarea>
+                                    <textarea
+                                        className="form-control"
+                                        rows={5}
+                                        placeholder="Describe what was done, what remains, any challenges encountered...&#10;&#10;e.g. Installed and configured 2 of 4 network switches in Lab A. Encountered IP conflict issue — resolved by reassigning VLAN. Lab B configuration pending hardware delivery on 22 Apr."
+                                        value={description}
+                                        onChange={(e) => setDescription(e.target.value)}
+                                        disabled={loadingSubmit}
+                                    ></textarea>
                                 </div>
 
                                 {/* Evidence link */}
@@ -75,27 +209,63 @@ export default function StaffSubmitReport() {
                                     <label className="form-label fw-black text-dark small d-flex align-items-center gap-2"><span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--mubs-blue)' }}>link</span>Evidence Link (Google Drive, SharePoint, etc.)</label>
                                     <div className="input-group">
                                         <span className="input-group-text bg-white"><span className="material-symbols-outlined" style={{ fontSize: '18px', color: '#94a3b8' }}>insert_link</span></span>
-                                        <input type="url" className="form-control" id="evidenceLinkInput" placeholder="https://drive.google.com/file/..." />
-                                        <button className="btn btn-outline-secondary fw-bold" type="button" onClick={() => alert('Toast: Preview link successful')}>Preview</button>
+                                        <input
+                                            type="url"
+                                            className="form-control"
+                                            id="evidenceLinkInput"
+                                            placeholder="https://drive.google.com/file/..."
+                                            value={evidenceLink}
+                                            onChange={(e) => setEvidenceLink(e.target.value)}
+                                            disabled={loadingSubmit}
+                                        />
+                                        <button className="btn btn-outline-secondary fw-bold" type="button" onClick={() => evidenceLink ? window.open(evidenceLink, '_blank') : alert('Please enter a link first.')}>Preview</button>
                                     </div>
                                 </div>
 
                                 {/* File upload zone */}
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small d-flex align-items-center gap-2"><span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--mubs-blue)' }}>attach_file</span>Attach Supporting File (optional)</label>
-                                    <div className="upload-zone" onClick={() => alert('Toast: File picker opened.')}>
+                                    <div className="upload-zone position-relative">
+                                        <input
+                                            type="file"
+                                            className="form-control"
+                                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+                                            onChange={handleFileChange}
+                                            disabled={loadingSubmit}
+                                            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                                        />
                                         <span className="material-symbols-outlined">cloud_upload</span>
-                                        <div className="fw-bold text-muted" style={{ fontSize: '.88rem' }}>Click to upload or drag &amp; drop</div>
+                                        {attachedFile ? (
+                                            <div className="fw-bold text-success" style={{ fontSize: '.88rem' }}>{attachedFile.name}</div>
+                                        ) : (
+                                            <div className="fw-bold text-muted" style={{ fontSize: '.88rem' }}>Click to upload or drag &amp; drop</div>
+                                        )}
                                         <div className="text-muted" style={{ fontSize: '.75rem' }}>PDF, DOCX, XLSX, PNG, JPG · Max 10MB</div>
                                     </div>
+                                    {attachedFile && (
+                                        <div className="text-start mt-1">
+                                            <button className="btn btn-sm btn-outline-danger p-0 px-2" style={{ fontSize: '0.75rem' }} onClick={() => setAttachedFile(null)} disabled={loadingSubmit}>Remove File</button>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="col-12 d-flex gap-3 flex-wrap mt-1">
-                                    <button className="btn fw-bold text-white px-4 py-2 d-flex align-items-center justify-content-center" style={{ background: 'var(--mubs-blue)' }} onClick={() => alert('Toast: Report submitted successfully!')}>
-                                        <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>send</span>Submit Report
+                                    <button
+                                        className="btn fw-bold text-white px-4 py-2 d-flex align-items-center justify-content-center"
+                                        style={{ background: 'var(--mubs-blue)' }}
+                                        onClick={() => handleSubmit(false)}
+                                        disabled={loadingSubmit}
+                                    >
+                                        <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>send</span>
+                                        {loadingSubmit ? 'Submitting...' : 'Submit Report'}
                                     </button>
-                                    <button className="btn btn-outline-secondary fw-bold d-flex align-items-center justify-content-center" onClick={() => alert('Toast: Draft saved.')}>
-                                        <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>save</span>Save Draft
+                                    <button
+                                        className="btn btn-outline-secondary fw-bold d-flex align-items-center justify-content-center"
+                                        onClick={() => handleSubmit(true)}
+                                        disabled={loadingSubmit}
+                                    >
+                                        <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>save</span>
+                                        Save Draft
                                     </button>
                                 </div>
                             </div>
@@ -130,18 +300,24 @@ export default function StaffSubmitReport() {
                     <div className="table-card">
                         <div className="table-card-header"><h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>history</span>Recent Submissions</h5></div>
                         <div className="p-3 d-flex flex-column gap-2">
-                            <div className="d-flex align-items-center gap-3 p-2 rounded" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                                <span className="material-symbols-outlined" style={{ color: '#059669', fontSize: '22px' }}>check_circle</span>
-                                <div className="flex-fill"><div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Lab Setup Report — Phase 1</div><div className="text-muted" style={{ fontSize: '.73rem' }}>Today · Under Review</div></div>
-                            </div>
-                            <div className="d-flex align-items-center gap-3 p-2 rounded" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                <span className="material-symbols-outlined" style={{ color: '#059669', fontSize: '22px' }}>check_circle</span>
-                                <div className="flex-fill"><div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Budget Estimate</div><div className="text-muted" style={{ fontSize: '.73rem' }}>08 Apr · Score: 5/5</div></div>
-                            </div>
-                            <div className="d-flex align-items-center gap-3 p-2 rounded" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                <span className="material-symbols-outlined" style={{ color: '#059669', fontSize: '22px' }}>check_circle</span>
-                                <div className="flex-fill"><div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>Obtain Principal Approval</div><div className="text-muted" style={{ fontSize: '.73rem' }}>05 Apr · Score: 4/5</div></div>
-                            </div>
+                            {recentSubmissions.length === 0 ? (
+                                <div className="text-muted small">No recent submissions found.</div>
+                            ) : (
+                                recentSubmissions.slice(0, 5).map(sub => (
+                                    <div key={sub.id} className="d-flex align-items-center gap-3 p-2 rounded" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                        <span className="material-symbols-outlined" style={{ color: sub.status === 'Completed' ? '#059669' : sub.status === 'Under Review' ? '#b45309' : '#0ea5e9', fontSize: '22px' }}>
+                                            {sub.status === 'Completed' ? 'check_circle' : sub.status === 'Under Review' ? 'pending_actions' : 'info'}
+                                        </span>
+                                        <div className="flex-fill">
+                                            <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{sub.report_name}</div>
+                                            <div className="text-muted" style={{ fontSize: '.73rem' }}>
+                                                {new Date(sub.submitted_at).toLocaleDateString()} · {sub.status}
+                                                {sub.score ? ` · Score: ${sub.score}/5` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>

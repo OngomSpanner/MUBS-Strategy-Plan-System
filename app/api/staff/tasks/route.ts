@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
     try {
         // Fetch all activities as "tasks" for the staff member
@@ -16,10 +18,8 @@ export async function GET() {
                     sa.priority,
                     sa.progress,
                     sa.parent_id,
-                    u.name as unit_name,
                     p.status as parent_status
                 FROM strategic_activities sa
-                LEFT JOIN units u ON sa.unit_id = u.id
                 LEFT JOIN strategic_activities p ON sa.parent_id = p.id
                 ORDER BY sa.end_date ASC
             `
