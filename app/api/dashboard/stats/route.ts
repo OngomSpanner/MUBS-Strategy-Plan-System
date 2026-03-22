@@ -15,14 +15,17 @@ export async function GET() {
       return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
     }
 
-    // Get total activities
+    // Main strategic activities only (parent_id IS NULL and source IS NOT NULL); excludes HOD-created tasks
+    const mainOnly = 'WHERE parent_id IS NULL AND source IS NOT NULL';
+
+    // Get total activities (main/strategic goals only)
     const totalActivities = await query({
-      query: 'SELECT COUNT(*) as count FROM strategic_activities'
+      query: `SELECT COUNT(*) as count FROM strategic_activities ${mainOnly}`
     });
 
-    // Get overall progress
+    // Get overall progress (main activities only)
     const overallProgress = await query({
-      query: 'SELECT AVG(progress) as avg_progress FROM strategic_activities'
+      query: `SELECT AVG(progress) as avg_progress FROM strategic_activities ${mainOnly}`
     });
 
     // Get total users
@@ -37,7 +40,7 @@ export async function GET() {
 
     // strategic_activities.status: enum('pending','in_progress','completed','overdue')
     const completedActivities = await query({
-      query: "SELECT COUNT(*) as count FROM strategic_activities WHERE status = 'completed'"
+      query: `SELECT COUNT(*) as count FROM strategic_activities ${mainOnly} AND status = 'completed'`
     });
 
     // Get pending committee proposals (committee_proposals.status: 'Pending', etc.)
@@ -45,27 +48,27 @@ export async function GET() {
       query: 'SELECT COUNT(*) as count FROM committee_proposals WHERE status = "Pending"'
     });
 
-    // On-track = in_progress (activities being worked on)
+    // On-track = in_progress (main activities being worked on)
     const onTrackActivities = await query({
-      query: "SELECT COUNT(*) as count FROM strategic_activities WHERE status = 'in_progress'"
+      query: `SELECT COUNT(*) as count FROM strategic_activities ${mainOnly} AND status = 'in_progress'`
     });
 
     const inProgressActivities = await query({
-      query: "SELECT COUNT(*) as count FROM strategic_activities WHERE status = 'in_progress'"
+      query: `SELECT COUNT(*) as count FROM strategic_activities ${mainOnly} AND status = 'in_progress'`
     });
 
-    // Delayed = overdue (strategic_activities.status = 'overdue')
+    // Delayed = overdue (main activities only)
     const delayedActivities = await query({
-      query: "SELECT COUNT(*) as count FROM strategic_activities WHERE status = 'overdue'"
+      query: `SELECT COUNT(*) as count FROM strategic_activities ${mainOnly} AND status = 'overdue'`
     });
 
-    // Office/Faculty performance: avg strategic_activities.progress per office/faculty (parent_id IS NULL), including all activities under their units
+    // Office/Faculty performance: avg progress per office/faculty (main strategic activities only)
     const departmentPerformance = await query({
       query: `
         SELECT parent.id, parent.name, ROUND(AVG(sa.progress)) AS progress
         FROM departments parent
         LEFT JOIN departments child ON child.parent_id = parent.id
-        LEFT JOIN strategic_activities sa ON (sa.department_id = child.id OR sa.department_id = parent.id)
+        LEFT JOIN strategic_activities sa ON (sa.department_id = child.id OR sa.department_id = parent.id) AND sa.parent_id IS NULL AND sa.source IS NOT NULL
         WHERE parent.parent_id IS NULL
         GROUP BY parent.id, parent.name
         ORDER BY progress DESC, parent.name ASC

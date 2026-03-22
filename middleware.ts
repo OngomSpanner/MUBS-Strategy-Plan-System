@@ -41,6 +41,12 @@ export function middleware(request: NextRequest) {
             return NextResponse.redirect(new URL('/', request.url));
         }
 
+        // Must change temporary password before accessing any dashboard
+        const mustChangePassword = request.cookies.get('must_change_password')?.value === '1';
+        if (mustChangePassword && path !== '/set-password') {
+            return NextResponse.redirect(new URL('/set-password', request.url));
+        }
+
         const allowedRoles = routeRequirements[matchingPrefix];
 
         // If active role doesn't match the path requirements, block and redirect to their actual active role dashboard

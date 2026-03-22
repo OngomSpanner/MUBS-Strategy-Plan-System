@@ -8,14 +8,6 @@ interface DepartmentPerformance {
     value: number;
 }
 
-interface StaffPerformance {
-    name: string;
-    department: string;
-    totalActivities: number;
-    completed: number;
-    rate: number;
-}
-
 interface AnalyticsData {
     departmentPerformance: DepartmentPerformance[];
     institutionAverage: number;
@@ -25,13 +17,12 @@ interface AnalyticsData {
         watch: number;
         critical: number;
     };
-    staffPerformance: StaffPerformance[];
 }
 
 export default function PerformanceAnalytics() {
     const [data, setData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'department' | 'compliance' | 'staff'>('department');
+    const [activeTab, setActiveTab] = useState<'department' | 'compliance'>('department');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -57,7 +48,7 @@ export default function PerformanceAnalytics() {
         );
     }
 
-    const { departmentPerformance, institutionAverage, statusSplit, complianceDistribution, staffPerformance } = data;
+    const { departmentPerformance, institutionAverage, statusSplit, complianceDistribution } = data;
 
     const totalActivities = statusSplit.reduce((acc, curr) => acc + curr.count, 0) || 1;
     const onTrackCount = statusSplit.find(s => s.status === 'On Track')?.count || 0;
@@ -99,20 +90,6 @@ export default function PerformanceAnalytics() {
                         onClick={() => setActiveTab('compliance')}
                     >
                         <span className="material-symbols-outlined me-1" style={{ fontSize: '16px' }}>fact_check</span>Compliance
-                    </button>
-                </li>
-                <li className="nav-item">
-                    <button
-                        className={`nav-link fw-bold ${activeTab === 'staff' ? 'active' : ''}`}
-                        style={{
-                            background: activeTab === 'staff' ? 'var(--mubs-blue)' : 'rgba(255,255,255,.05)',
-                            color: activeTab === 'staff' ? '#fff' : '#475569',
-                            borderRadius: '8px',
-                            fontSize: '.83rem'
-                        }}
-                        onClick={() => setActiveTab('staff')}
-                    >
-                        <span className="material-symbols-outlined me-1" style={{ fontSize: '16px' }}>person_search</span>Staff Performance
                     </button>
                 </li>
             </ul>
@@ -259,66 +236,6 @@ export default function PerformanceAnalytics() {
                                 </div>
                                 <div className="text-muted small">Based on {departmentPerformance.length} departments</div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Tab 3: Staff Performance */}
-            {activeTab === 'staff' && (
-                <div id="tab-staff" className="analytics-tab">
-                    <div className="table-card bg-white rounded-3 shadow-sm border p-0 overflow-hidden">
-                        <div className="p-4 border-bottom d-flex align-items-center justify-content-between">
-                            <h5 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '1rem', fontWeight: 800 }}>
-                                <span className="material-symbols-outlined text-primary">person_search</span>
-                                Staff Performance Summaries
-                            </h5>
-                        </div>
-                        <div className="table-responsive">
-                            <table className="table table-hover align-middle mb-0">
-                                <thead className="bg-light">
-                                    <tr>
-                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Staff Member</th>
-                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Department</th>
-                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Activities</th>
-                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Rate</th>
-                                        <th className="p-3 border-0" style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Rating</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {staffPerformance.map((staff, idx) => {
-                                        const rating = staff.rate >= 85 ? 'Excellent' : (staff.rate >= 70 ? 'Good' : (staff.rate >= 50 ? 'Fair' : 'Needs Improvement'));
-                                        const ratingColor = staff.rate >= 85 ? '#10b981' : (staff.rate >= 70 ? '#22c55e' : (staff.rate >= 50 ? '#ffcd00' : '#ef4444'));
-                                        const ratingBg = staff.rate >= 85 ? '#f0fdf4' : (staff.rate >= 70 ? '#f0fdf4' : (staff.rate >= 50 ? '#fffbeb' : '#fef2f2'));
-
-                                        return (
-                                            <tr key={idx}>
-                                                <td className="p-3 border-light">
-                                                    <div className="d-flex align-items-center gap-3">
-                                                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                            <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>person</span>
-                                                        </div>
-                                                        <span style={{ fontSize: '.88rem', fontWeight: 700, color: '#1e293b' }}>{staff.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="p-3 border-light text-muted" style={{ fontSize: '.85rem' }}>{staff.department}</td>
-                                                <td className="p-3 border-light fw-bold" style={{ fontSize: '.85rem' }}>{staff.completed}/{staff.totalActivities}</td>
-                                                <td className="p-3 border-light">
-                                                    <div className="d-flex align-items-center gap-2">
-                                                        <div className="progress flex-fill" style={{ height: '6px', width: '80px', borderRadius: '3px', background: '#f1f5f9' }}>
-                                                            <div className="progress-bar" style={{ width: `${staff.rate}%`, background: ratingColor }}></div>
-                                                        </div>
-                                                        <span style={{ fontSize: '.8rem', fontWeight: 800 }}>{staff.rate}%</span>
-                                                    </div>
-                                                </td>
-                                                <td className="p-3 border-light">
-                                                    <span className="badge" style={{ background: ratingBg, color: ratingColor, fontWeight: 800, fontSize: '.68rem', padding: '5px 10px', borderRadius: '6px' }}>{rating}</span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
                         </div>
                     </div>
                 </div>

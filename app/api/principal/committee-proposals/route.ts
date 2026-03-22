@@ -40,7 +40,7 @@ export async function GET() {
                 FROM committee_proposals cp
                 LEFT JOIN departments d ON d.id = cp.department_id
                 LEFT JOIN users u ON u.id = cp.submitted_by
-                WHERE cp.status IN ('Pending', 'Edit Requested')
+                WHERE cp.status = 'Strategy Reviewed'
                 ORDER BY COALESCE(cp.submitted_date, cp.created_at) DESC, cp.id DESC
             `
         }) as any[];

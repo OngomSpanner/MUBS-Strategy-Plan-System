@@ -20,32 +20,69 @@ export async function GET() {
         const { departmentIds, userId } = await getAuthFromToken();
         const placeholders = inPlaceholders(departmentIds.length);
 
-        // Tasks: strategic_activities (child) in visible departments or whose parent is in visible departments
-        const tasksQuery = await query({
-            query: `
-                SELECT 
-                    sa.id,
-                    sa.title,
-                    COALESCE(aa.status, sa.status) as db_status,
-                    sa.priority,
-                    sa.progress,
-                    sa.end_date as dueDate,
-                    u.full_name as assignee_name,
-                    aa.assigned_to_user_id as assigned_to,
-                    p.id as activity_id,
-                    p.title as activity_title,
-                    sa.description
-                FROM strategic_activities sa
-                LEFT JOIN strategic_activities p ON sa.parent_id = p.id
-                LEFT JOIN activity_assignments aa ON aa.activity_id = sa.id
-                LEFT JOIN users u ON aa.assigned_to_user_id = u.id
-                LEFT JOIN staff_reports sr ON sr.activity_assignment_id = aa.id
-                WHERE (sa.department_id IN (${placeholders}) OR p.department_id IN (${placeholders}))
-                AND sa.parent_id IS NOT NULL
-                ORDER BY sa.priority DESC, sa.end_date ASC
-            `,
-            values: [...departmentIds, ...departmentIds]
-        }) as any[];
+        // Two-tier flat: Weekly Tasks (strategic_activities with parent_id set) linked to one Strategic Activity (parent_id IS NULL).
+        // Progress = strategic_activities.progress, same scale as Department Efficiency: Complete=100%, Incomplete=50%, Not Done=0% (set when HOD evaluates in Submissions).
+        let tasksQuery: any[];
+        try {
+            tasksQuery = await query({
+                query: `
+                    SELECT 
+                        sa.id,
+                        sa.title,
+                        COALESCE(aa.status, sa.status) as db_status,
+                        sa.progress,
+                        (SELECT sr2.status FROM staff_reports sr2 WHERE sr2.activity_assignment_id = aa.id ORDER BY sr2.updated_at DESC LIMIT 1) as latest_report_status,
+                        COALESCE(sa.start_date, p.start_date) as startDate,
+                        COALESCE(sa.end_date, p.end_date) as endDate,
+                        COALESCE(sa.end_date, p.end_date) as dueDate,
+                        u.full_name as assignee_name,
+                        aa.assigned_to_user_id as assigned_to,
+                        p.id as activity_id,
+                        p.title as activity_title,
+                        sa.description,
+                        sa.task_type,
+                        sa.kpi_target_value,
+                        sa.frequency,
+                        sa.frequency_interval
+                    FROM strategic_activities sa
+                    LEFT JOIN strategic_activities p ON sa.parent_id = p.id
+                    LEFT JOIN activity_assignments aa ON aa.activity_id = sa.id
+                    LEFT JOIN users u ON aa.assigned_to_user_id = u.id
+                    LEFT JOIN staff_reports sr ON sr.activity_assignment_id = aa.id
+                    WHERE (sa.department_id IN (${placeholders}) OR p.department_id IN (${placeholders}))
+                    AND (sa.parent_id IS NOT NULL OR (sa.parent_id IS NULL AND (sa.task_type = 'process' OR sa.task_type IS NULL)))
+                    AND sa.activity_type = 'detailed'
+                    AND (COALESCE(sa.source, '') != 'strategic_plan')
+                    ORDER BY sa.end_date ASC
+                `,
+                values: [...departmentIds, ...departmentIds]
+            }) as any[];
+        } catch (err: any) {
+            if (err?.message?.includes('task_type') || err?.code === 'ER_BAD_FIELD_ERROR') {
+                tasksQuery = await query({
+                    query: `
+                        SELECT sa.id, sa.title, COALESCE(aa.status, sa.status) as db_status, sa.progress,
+                        (SELECT sr2.status FROM staff_reports sr2 WHERE sr2.activity_assignment_id = aa.id ORDER BY sr2.updated_at DESC LIMIT 1) as latest_report_status,
+                        COALESCE(sa.start_date, p.start_date) as startDate,
+                        COALESCE(sa.end_date, p.end_date) as endDate,
+                        COALESCE(sa.end_date, p.end_date) as dueDate,
+                        u.full_name as assignee_name, aa.assigned_to_user_id as assigned_to, p.id as activity_id, p.title as activity_title, sa.description, sa.frequency, sa.frequency_interval
+                        FROM strategic_activities sa
+                        LEFT JOIN strategic_activities p ON sa.parent_id = p.id
+                        LEFT JOIN activity_assignments aa ON aa.activity_id = sa.id
+                        LEFT JOIN users u ON aa.assigned_to_user_id = u.id
+                        LEFT JOIN staff_reports sr ON sr.activity_assignment_id = aa.id
+                        WHERE (sa.department_id IN (${placeholders}) OR p.department_id IN (${placeholders})) AND sa.activity_type = 'detailed'
+                        AND (COALESCE(sa.source, '') != 'strategic_plan')
+                        ORDER BY sa.end_date ASC
+                    `,
+                    values: [...departmentIds, ...departmentIds]
+                }) as any[];
+                tasksQuery = tasksQuery.map((t: any) => ({ ...t, task_type: 'process', kpi_target_value: null, latest_report_status: t.latest_report_status }));
+            } else {
+                throw err;
+            }
+        }
 
         const statusMap: Record<string, string> = {
             'pending': 'Pending',
@@ -57,24 +94,68 @@ export async function GET() {
             'overdue': 'Delayed'
         };
 
-        const tasks = tasksQuery.map((t: any) => ({
-            ...t,
-            status: statusMap[t.db_status] || 'Not Started'
-        }));
+        // Progress and status: same scale as Department Efficiency. Use latest evaluation outcome if present.
+        const progressFromReportStatus = (status: string | null): number | null => {
+            if (!status) return null;
+            const s = (status + '').toLowerCase();
+            if (s === 'evaluated') return 100;
+            if (s === 'incomplete') return 50;
+            if (s === 'not_done') return 0;
+            return null;
+        };
+        const statusFromReportStatus = (status: string | null): string | null => {
+            if (!status) return null;
+            const s = (status + '').toLowerCase();
+            if (s === 'evaluated') return 'Completed';
+            if (s === 'incomplete') return 'Incomplete';
+            if (s === 'not_done') return 'Not Done';
+            return null;
+        };
+
+        const mapped = tasksQuery.map((t: any) => {
+            const derivedProgress = progressFromReportStatus(t.latest_report_status);
+            const progress = derivedProgress != null ? derivedProgress : (t.progress != null ? Number(t.progress) : 0);
+            const derivedStatus = statusFromReportStatus(t.latest_report_status);
+            const status = derivedStatus ?? statusMap[t.db_status] ?? 'Not Started';
+            return {
+                ...t,
+                progress,
+                status,
+                strategic_activity_id: t.activity_id,
+                tier: 'weekly_task'
+            };
+        });
+
+        // One row per task per assignee: progress comes from strategic_activities.progress (updated when HOD marks submission Complete)
+        const seen = new Map<string, typeof mapped[0]>();
+        for (const t of mapped) {
+            const key = `${t.id}-${t.assigned_to ?? 'unassigned'}`;
+            const existing = seen.get(key);
+            if (!existing || t.status === 'Completed' || (t.status === 'Under Review' && existing.status !== 'Completed')) {
+                seen.set(key, t);
+            }
+        }
+        const tasks = Array.from(seen.values());
 
         const kanban = {
             todo: tasks.filter((t: any) => ['Not Started', 'Pending'].includes(t.status)),
-            inProgress: tasks.filter((t: any) => ['In Progress', 'On Track', 'Delayed'].includes(t.status)),
+            inProgress: tasks.filter((t: any) => ['In Progress', 'On Track', 'Delayed', 'Incomplete', 'Not Done'].includes(t.status)),
             underReview: tasks.filter((t: any) => t.status === 'Under Review'),
             completed: tasks.filter((t: any) => t.status === 'Completed')
         };
 
+        // Parent options for HOD: top-level strategic goals or strategy-plan detailed copies in this exactly matched department
         const activitiesQuery = await query({
-            query: `SELECT id, title FROM strategic_activities WHERE department_id IN (${placeholders}) AND parent_id IS NULL ORDER BY title`,
-            values: [...departmentIds]
+            query: `SELECT id, title, kpi_target_value, target_kpi FROM strategic_activities WHERE department_id = ? AND (parent_id IS NULL OR source = 'strategic_plan') AND source IS NOT NULL ORDER BY title`,
+            values: [departmentIds[0]]
         }) as any[];
 
-        const activities = activitiesQuery.map((a: any) => ({ id: a.id, title: a.title }));
+        const activities = activitiesQuery.map((a: any) => ({ 
+            id: a.id, 
+            title: a.title, 
+            kpi_target_value: a.kpi_target_value,
+            target_kpi: a.target_kpi
+        }));
         const filterActivityNames = activitiesQuery.map((a: any) => a.title);
         const assignees = [...new Set(tasks.map((t: any) => t.assignee_name))].filter(Boolean);
 
@@ -99,57 +180,116 @@ export async function POST(req: Request) {
         const { departmentIds, userId, role } = await getAuthFromToken();
         const body = await req.json();
 
-        const { title, parent_id, assigned_to, end_date, priority, description } = body;
+        const { title, parent_id, assigned_to, assigned_to_ids, end_date, start_date, description, task_type, kpi_target_value, frequency, frequency_interval } = body;
 
-        if (!title || !parent_id || !end_date) {
-            return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
+        if (!title || !end_date) {
+            return NextResponse.json({ message: 'Missing required fields (title, end_date)' }, { status: 400 });
         }
 
-        // HOD cannot assign tasks to themselves; only to staff
-        if (role === 'hod' && assigned_to != null && Number(assigned_to) === userId) {
-            return NextResponse.json({ message: 'You cannot assign a task to yourself. Assign to a staff member.' }, { status: 403 });
+        const taskType = task_type === 'kpi_driver' ? 'kpi_driver' : 'process';
+        const isKpiDriver = taskType === 'kpi_driver';
+
+        if (isKpiDriver && (parent_id == null || parent_id === '')) {
+            return NextResponse.json({ message: 'KPI-Driver Task (Strategy Plan) requires a Parent Strategic Activity.' }, { status: 400 });
         }
+
+        // Support single (assigned_to) or multiple (assigned_to_ids) assignees
+        const rawIds: number[] = Array.isArray(assigned_to_ids)
+            ? assigned_to_ids.map((x: unknown) => Number(x)).filter((x) => !Number.isNaN(x) && x > 0)
+            : (assigned_to != null && assigned_to !== '' ? [Number(assigned_to)] : []).filter((x) => !Number.isNaN(x) && x > 0);
+        const assigneeUserIds = [...new Set(rawIds)];
+
+        // HOD / Unit Head cannot assign tasks to themselves; only to staff
+        const filteredAssigneeIds = (role === 'hod' || role === 'unit head')
+            ? assigneeUserIds.filter((id) => id !== userId)
+            : assigneeUserIds;
 
         const placeholders = inPlaceholders(departmentIds.length);
-        const parentCheck = await query({
-            query: `SELECT id, department_id FROM strategic_activities WHERE id = ? AND department_id IN (${placeholders}) AND parent_id IS NULL`,
-            values: [parent_id, ...departmentIds]
-        }) as any[];
+        let parentDeptId: number;
+        let effectiveParentId: number | null = null;
 
-        if (parentCheck.length === 0) {
-            return NextResponse.json({ message: 'Invalid parent activity for your department' }, { status: 403 });
+        if (parent_id != null && parent_id !== '') {
+            const parentCheck = await query({
+                query: `
+                    SELECT 
+                        sa.id,
+                        sa.department_id,
+                        sa.parent_id,
+                        COALESCE(p.id, sa.id) as main_id,
+                        COALESCE(p.department_id, sa.department_id) as main_department_id
+                    FROM strategic_activities sa
+                    LEFT JOIN strategic_activities p ON sa.parent_id = p.id
+                    WHERE sa.id = ?
+                    AND (sa.department_id IN (${placeholders}) OR p.department_id IN (${placeholders}))
+                    AND (sa.parent_id IS NULL OR COALESCE(sa.source, '') = 'strategic_plan')
+                `,
+                values: [parent_id, ...departmentIds, ...departmentIds]
+            }) as any[];
+            if (parentCheck.length === 0) {
+                return NextResponse.json({ message: 'Invalid parent activity for your department' }, { status: 403 });
+            }
+            const row = parentCheck[0];
+            // Tasks should live in the HOD's unit; parent_id must point to the top-level strategic activity.
+            parentDeptId = Number(row.department_id ?? row.main_department_id);
+            effectiveParentId = Number(row.main_id);
+        } else {
+            parentDeptId = departmentIds[0];
         }
 
-        const parentDeptId = parentCheck[0].department_id;
+        const kpiTarget = isKpiDriver && kpi_target_value != null && kpi_target_value !== ''
+            ? Number(kpi_target_value)
+            : null;
 
-        const result = await query({
-            query: `
-                INSERT INTO strategic_activities 
-                (title, parent_id, department_id, end_date, priority, description, status, progress, created_by, activity_type) 
-                VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, 'detailed')
-            `,
-            values: [
-                title,
-                parent_id,
-                parentDeptId,
-                end_date,
-                priority || 'Medium',
-                description || '',
-                userId
-            ]
-        }) as any;
+        // Schema (mubs_super_admin): activity_type, task_type, parent_id, title, description, department_id, start_date, end_date, status, progress, created_by, kpi_target_value
+        const startDate = (start_date && start_date !== '') ? start_date : null;
+        let result: any;
+        try {
+            result = await query({
+                query: `
+                    INSERT INTO strategic_activities 
+                    (activity_type, task_type, parent_id, title, description, department_id, start_date, end_date, status, progress, created_by, kpi_target_value, frequency, frequency_interval) 
+                    VALUES ('detailed', ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?)
+                `,
+                values: [
+                    taskType,
+                    effectiveParentId,
+                    title,
+                    description || '',
+                    parentDeptId,
+                    startDate,
+                    end_date,
+                    userId,
+                    kpiTarget,
+                    frequency || 'once',
+                    frequency_interval || 1
+                ]
+            }) as any;
+        } catch (insertErr: any) {
+            if (insertErr?.message?.includes('task_type') || insertErr?.code === 'ER_BAD_FIELD_ERROR') {
+                result = await query({
+                    query: `
+                        INSERT INTO strategic_activities 
+                        (activity_type, parent_id, title, description, department_id, start_date, end_date, status, progress, created_by) 
+                        VALUES ('detailed', ?, ?, ?, ?, ?, ?, 'pending', 0, ?)
+                    `,
+                    values: [effectiveParentId, title, description || '', parentDeptId, startDate, end_date, userId]
+                }) as any;
+            } else {
+                throw insertErr;
+            }
+        }
 
         const insertedTaskId = result.insertId;
 
-        // If assigned, create assignment
-        if (assigned_to) {
+        // Create one assignment per selected staff member
+        for (const assignedToId of filteredAssigneeIds) {
             await query({
                 query: `
                     INSERT INTO activity_assignments
                     (activity_id, assigned_to_user_id, assigned_by, start_date, end_date, status)
-                    VALUES (?, ?, ?, CURDATE(), ?, 'pending')
+                    VALUES (?, ?, ?, ?, ?, 'pending')
                 `,
-                values: [insertedTaskId, assigned_to, userId, end_date]
+                values: [insertedTaskId, assignedToId, userId, startDate, end_date]
             });
         }
 
@@ -168,14 +308,14 @@ export async function PUT(req: Request) {
         const { departmentIds, userId, role } = await getAuthFromToken();
         const body = await req.json();
 
-        const { id, title, assigned_to, end_date, priority, description, status, progress, reviewer_notes, score } = body;
+        const { id, title, assigned_to, end_date, start_date, description, status, progress, reviewer_notes, score, task_type, kpi_target_value, parent_id, activity_id, frequency, frequency_interval } = body;
 
         if (!id) {
             return NextResponse.json({ message: 'Task ID is required' }, { status: 400 });
         }
 
-        // HOD cannot assign tasks to themselves; only to staff
-        if (role === 'hod' && assigned_to != null && Number(assigned_to) === userId) {
+        // HOD / Unit Head cannot assign tasks to themselves; only to staff
+        if ((role === 'hod' || role === 'unit head') && assigned_to != null && Number(assigned_to) === userId) {
             return NextResponse.json({ message: 'You cannot assign a task to yourself. Assign to a staff member.' }, { status: 403 });
         }
 
@@ -194,15 +334,55 @@ export async function PUT(req: Request) {
             return NextResponse.json({ message: 'Task not found or unauthorized' }, { status: 403 });
         }
 
+        const taskType = task_type !== undefined ? (task_type === 'kpi_driver' ? 'kpi_driver' : 'process') : undefined;
+        const isKpiDriver = taskType === 'kpi_driver';
+        const pId = parent_id ?? activity_id;
+
+        if (isKpiDriver && (pId == null || pId === '')) {
+            return NextResponse.json({ message: 'KPI-Driver Task (Strategy Plan) requires a Parent Strategic Activity.' }, { status: 400 });
+        }
+
+        let effectiveParentId: number | null | undefined = undefined;
+        if (pId !== undefined) {
+            if (pId == null || pId === '') {
+                effectiveParentId = null;
+            } else {
+                const parentCheck = await query({
+                    query: `
+                        SELECT 
+                            COALESCE(p.id, sa.id) as main_id
+                        FROM strategic_activities sa
+                        LEFT JOIN strategic_activities p ON sa.parent_id = p.id
+                        WHERE sa.id = ?
+                        AND (sa.department_id IN (${placeholders}) OR p.department_id IN (${placeholders}))
+                        AND (sa.parent_id IS NULL OR COALESCE(sa.source, '') = 'strategic_plan')
+                    `,
+                    values: [pId, ...departmentIds, ...departmentIds]
+                }) as any[];
+                if (parentCheck.length === 0) {
+                    return NextResponse.json({ message: 'Invalid parent activity for your department' }, { status: 403 });
+                }
+                effectiveParentId = Number(parentCheck[0].main_id);
+            }
+        } else if (taskType === 'process') {
+            effectiveParentId = null;
+        }
+
         // First update the strategic activity
         let updateQuery = 'UPDATE strategic_activities SET updated_at = CURRENT_TIMESTAMP';
         const saValues: any[] = [];
 
         if (title !== undefined) { updateQuery += ', title = ?'; saValues.push(title); }
+        if (start_date !== undefined) { updateQuery += ', start_date = ?'; saValues.push(start_date); }
         if (end_date !== undefined) { updateQuery += ', end_date = ?'; saValues.push(end_date); }
-        if (priority !== undefined) { updateQuery += ', priority = ?'; saValues.push(priority); }
+
         if (description !== undefined) { updateQuery += ', description = ?'; saValues.push(description); }
         if (progress !== undefined) { updateQuery += ', progress = ?'; saValues.push(progress); }
+        if (taskType !== undefined) { updateQuery += ', task_type = ?'; saValues.push(taskType); }
+        if (effectiveParentId !== undefined) { updateQuery += ', parent_id = ?'; saValues.push(effectiveParentId); }
+        if (kpi_target_value !== undefined) { updateQuery += ', kpi_target_value = ?'; saValues.push(kpi_target_value === '' || kpi_target_value == null ? null : Number(kpi_target_value)); }
+        if (frequency !== undefined) { updateQuery += ', frequency = ?'; saValues.push(frequency); }
+        if (frequency_interval !== undefined) { updateQuery += ', frequency_interval = ?'; saValues.push(frequency_interval); }
 
         updateQuery += ' WHERE id = ?';
         saValues.push(id);
@@ -248,9 +428,9 @@ export async function PUT(req: Request) {
                     query: `
                         INSERT INTO activity_assignments
                         (activity_id, assigned_to_user_id, assigned_by, start_date, end_date, status)
-                        VALUES (?, ?, ?, CURDATE(), ?, 'pending')
+                        VALUES (?, ?, ?, ?, ?, 'pending')
                     `,
-                    values: [id, assigned_to, userId, end_date || null]
+                    values: [id, assigned_to, userId, start_date || null, end_date || null]
                 });
             }
         }

@@ -479,7 +479,7 @@ export default function TrackingView() {
                 </div>
             </div>
             {/* Escalate Confirm Modal */}
-            <Modal show={showEscalate} onHide={() => { setShowEscalate(false); setEscalateTarget(null); }} centered>
+            <Modal show={showEscalate} onHide={() => { setShowEscalate(false); setEscalateTarget(null); }} centered backdrop="static" keyboard={false} size="lg">
                 <Modal.Header closeButton className="modal-header-mubs">
                     <Modal.Title className="fw-bold d-flex align-items-center gap-2">
                         <span className="material-symbols-outlined" style={{ color: 'var(--mubs-red)' }}>priority_high</span>

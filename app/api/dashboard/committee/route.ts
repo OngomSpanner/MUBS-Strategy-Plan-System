@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
+import { getCommitteesForUser } from '@/lib/user-committees';
 
 export async function GET() {
     try {
@@ -14,8 +15,16 @@ export async function GET() {
         if (!decoded?.userId) {
             return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
         }
+        const userId = decoded.userId;
+
+        // If user has committee assignments, restrict to those committees; otherwise show all (backward compatible)
+        const userCommittees = await getCommitteesForUser(userId);
+        const committeeFilter = userCommittees.length > 0 ? userCommittees : null;
 
         // 1. Proposal Stats (COALESCE so empty table returns 0; include Edit Requested in pending)
+        const committeeWhere = committeeFilter
+            ? ` AND committee_type IN (${committeeFilter.map(() => '?').join(',')})`
+            : '';
         const proposalStats = await query({
             query: `
                 SELECT 
@@ -24,7 +33,9 @@ export async function GET() {
                     COALESCE(SUM(CASE WHEN status IN ('Pending', 'Edit Requested') THEN 1 ELSE 0 END), 0) as pending,
                     COALESCE(SUM(CASE WHEN status = 'Rejected' THEN 1 ELSE 0 END), 0) as rejected
                 FROM committee_proposals
-            `
+                WHERE 1=1 ${committeeWhere}
+            `,
+            values: committeeFilter || []
         }) as any[];
 
         const row = proposalStats[0];
@@ -48,9 +59,11 @@ export async function GET() {
                     d.name as department_name
                 FROM committee_proposals cp
                 LEFT JOIN departments d ON d.id = cp.department_id
+                WHERE 1=1 ${committeeWhere}
                 ORDER BY COALESCE(cp.submitted_date, cp.created_at) DESC, cp.id DESC
                 LIMIT 5
-            `
+            `,
+            values: committeeFilter || []
         }) as any[];
 
         const proposals = (recentProposals || []).map((r: any) => ({
@@ -73,9 +86,11 @@ export async function GET() {
                     d.name as department_name
                 FROM committee_proposals cp
                 LEFT JOIN departments d ON d.id = cp.department_id
+                WHERE 1=1 ${committeeWhere}
                 ORDER BY COALESCE(cp.reviewed_date, cp.submitted_date, cp.created_at) DESC, cp.id DESC
                 LIMIT 6
-            `
+            `,
+            values: committeeFilter || []
         }) as any[];
 
         const now = new Date();
@@ -113,7 +128,8 @@ export async function GET() {
         return NextResponse.json({
             stats,
             proposals,
-            activity
+            activity,
+            committees: userCommittees,
         });
     } catch (error: any) {
         console.error('Committee Dashboard API Error:', error);

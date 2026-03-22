@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
-import { Modal, Button, Form } from 'react-bootstrap';
+import { Modal, Button, Form, Dropdown } from 'react-bootstrap';
 import axios from 'axios';
 import { linkify } from '@/lib/linkify';
 
@@ -43,9 +43,10 @@ export default function CommitteeView() {
     const [showReject, setShowReject] = useState(false);
     const [showEdit, setShowEdit] = useState(false);
 
-    // Derived stats from real data
+    // Derived stats from real data (workflow: Pending → Strategy Reviewed → Principal → Approved/Rejected)
     const stats = {
         pending: proposals.filter(p => p.status === 'Pending').length,
+        strategyReviewed: proposals.filter(p => p.status === 'Strategy Reviewed').length,
         approved: proposals.filter(p => p.status === 'Approved').length,
         rejected: proposals.filter(p => p.status === 'Rejected').length,
         edits: proposals.filter(p => p.status === 'Edit Requested').length,
@@ -82,11 +83,11 @@ export default function CommitteeView() {
         }
     };
 
-    const open = (modal: 'view' | 'approve' | 'reject' | 'edit', proposal: Proposal) => {
+    const open = (modal: 'view' | 'approve' | 'reject' | 'edit' | 'recommend', proposal: Proposal) => {
         setSelectedProposal(proposal);
         setEditNote('');
         if (modal === 'view') setShowView(true);
-        if (modal === 'approve') setShowApprove(true);
+        if (modal === 'approve' || modal === 'recommend') setShowApprove(true);
         if (modal === 'reject') setShowReject(true);
         if (modal === 'edit') setShowEdit(true);
     };
@@ -105,7 +106,7 @@ export default function CommitteeView() {
         setActionLoading(true);
         try {
             const res = await axios.patch(`/api/committees/${selectedProposal.id}`, { status, reviewer_notes });
-            const message = (res.data?.message) || (status === 'Approved' ? 'Proposal approved and added to Strategic Activities.' : 'Proposal updated.');
+            const message = res.data?.message || 'Proposal updated.';
             closeAll();
             fetchProposals();
             if (message) alert(message);
@@ -118,27 +119,33 @@ export default function CommitteeView() {
 
     return (
         <Layout>
-            <div className="row g-4 mb-4">
+            <div className="row g-4 mb-4 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-5">
                 {/* Stat Cards */}
-                <div className="col-sm-6 col-md-3">
+                <div className="col">
                     <div className="stat-card" style={{ borderLeftColor: 'var(--mubs-blue)' }}>
                         <div className="stat-label">Pending Review</div>
                         <div className="stat-value">{stats.pending}</div>
                     </div>
                 </div>
-                <div className="col-sm-6 col-md-3">
+                <div className="col">
                     <div className="stat-card" style={{ borderLeftColor: '#10b981' }}>
                         <div className="stat-label">Approved</div>
                         <div className="stat-value">{stats.approved}</div>
                     </div>
                 </div>
-                <div className="col-sm-6 col-md-3">
+                <div className="col">
                     <div className="stat-card" style={{ borderLeftColor: 'var(--mubs-red)' }}>
                         <div className="stat-label">Rejected</div>
                         <div className="stat-value">{stats.rejected}</div>
                     </div>
                 </div>
-                <div className="col-sm-6 col-md-3">
+                <div className="col">
+                    <div className="stat-card" style={{ borderLeftColor: '#6366f1' }}>
+                        <div className="stat-label">With Principal</div>
+                        <div className="stat-value">{stats.strategyReviewed}</div>
+                    </div>
+                </div>
+                <div className="col">
                     <div className="stat-card" style={{ borderLeftColor: 'var(--mubs-yellow)' }}>
                         <div className="stat-label">Edit Requested</div>
                         <div className="stat-value">{stats.edits}</div>
@@ -173,6 +180,7 @@ export default function CommitteeView() {
                         >
                             <option>All Statuses</option>
                             <option>Pending</option>
+                            <option>Strategy Reviewed</option>
                             <option>Approved</option>
                             <option>Rejected</option>
                             <option>Edit Requested</option>
@@ -218,15 +226,34 @@ export default function CommitteeView() {
                                             </span>
                                         </td>
                                         <td>
-                                            <div className="d-flex gap-1">
-                                                <button className="btn btn-sm btn-outline-primary" onClick={() => open('view', p)}>View</button>
-                                                {p.status === 'Pending' && (
-                                                    <>
-                                                        <button className="btn btn-sm btn-outline-success" onClick={() => open('approve', p)}>Approve</button>
-                                                        <button className="btn btn-sm btn-outline-danger" onClick={() => open('reject', p)}>Reject</button>
-                                                    </>
-                                                )}
-                                            </div>
+                                            <Dropdown align="end">
+                                                <Dropdown.Toggle variant="light" size="sm" className="d-flex align-items-center justify-content-center p-2" style={{ minWidth: '36px' }} aria-label="Actions">
+                                                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>more_vert</span>
+                                                </Dropdown.Toggle>
+                                                <Dropdown.Menu>
+                                                    <Dropdown.Item onClick={() => open('view', p)}>
+                                                        <span className="material-symbols-outlined me-2" style={{ fontSize: '18px', verticalAlign: 'middle' }}>visibility</span>
+                                                        View
+                                                    </Dropdown.Item>
+                                                    {(p.status === 'Pending' || p.status === 'Edit Requested') && (
+                                                        <>
+                                                            <Dropdown.Divider />
+                                                            <Dropdown.Item onClick={() => open('recommend', p)} className="text-primary">
+                                                                <span className="material-symbols-outlined me-2" style={{ fontSize: '18px', verticalAlign: 'middle' }}>gavel</span>
+                                                                Recommend to Principal
+                                                            </Dropdown.Item>
+                                                            <Dropdown.Item onClick={() => open('edit', p)}>
+                                                                <span className="material-symbols-outlined me-2" style={{ fontSize: '18px', verticalAlign: 'middle' }}>edit_note</span>
+                                                                Request edits
+                                                            </Dropdown.Item>
+                                                            <Dropdown.Item onClick={() => open('reject', p)} className="text-danger">
+                                                                <span className="material-symbols-outlined me-2" style={{ fontSize: '18px', verticalAlign: 'middle' }}>cancel</span>
+                                                                Reject
+                                                            </Dropdown.Item>
+                                                        </>
+                                                    )}
+                                                </Dropdown.Menu>
+                                            </Dropdown>
                                         </td>
                                     </tr>
                                 ))
@@ -254,7 +281,7 @@ export default function CommitteeView() {
 
             {selectedProposal && (
                 <>
-                    <Modal show={showView} onHide={closeAll} centered>
+                    <Modal show={showView} onHide={closeAll} centered backdrop="static" keyboard={false} size="lg">
                         <Modal.Header closeButton className="modal-header-mubs">
                             <Modal.Title>Proposal Details</Modal.Title>
                         </Modal.Header>
@@ -323,28 +350,63 @@ export default function CommitteeView() {
                                 </div>
                             </div>
                         </Modal.Body>
+                        <Modal.Footer>
+                            <Button variant="light" onClick={closeAll}>Close</Button>
+                            {(selectedProposal.status === 'Pending' || selectedProposal.status === 'Edit Requested') && (
+                                <>
+                                    <Button variant="danger" onClick={() => { setShowView(false); setShowReject(true); }}>
+                                        Reject
+                                    </Button>
+                                    <Button variant="outline-primary" onClick={() => { setShowView(false); setShowEdit(true); }}>
+                                        Request edits
+                                    </Button>
+                                    <Button variant="primary" onClick={() => { setShowView(false); setShowApprove(true); }}>
+                                        Recommend to Principal
+                                    </Button>
+                                </>
+                            )}
+                        </Modal.Footer>
                     </Modal>
 
-                    <Modal show={showApprove} onHide={closeAll} centered>
+                    <Modal show={showApprove} onHide={closeAll} centered backdrop="static" keyboard={false} size="lg">
                         <Modal.Header closeButton className="modal-header-mubs">
-                            <Modal.Title>Approve Proposal</Modal.Title>
+                            <Modal.Title>Recommend to Principal</Modal.Title>
                         </Modal.Header>
                         <Modal.Body>
-                            <p>Are you sure you want to approve <strong>{selectedProposal.title}</strong>?</p>
+                            <p>Send <strong>{selectedProposal.title}</strong> to the Principal for final decision? Add notes for strategic alignment / feasibility (optional).</p>
                             <Form.Group className="mb-3">
                                 <Form.Label>Reviewer Notes (Optional)</Form.Label>
-                                <Form.Control as="textarea" rows={3} value={editNote} onChange={e => setEditNote(e.target.value)} />
+                                <Form.Control as="textarea" rows={3} value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="Strategic alignment and feasibility notes..." />
                             </Form.Group>
                         </Modal.Body>
                         <Modal.Footer>
                             <Button variant="light" onClick={closeAll}>Cancel</Button>
-                            <Button variant="success" onClick={() => handleStatusChange('Approved', editNote)} disabled={actionLoading}>
-                                {actionLoading ? 'Approving...' : 'Confirm Approval'}
+                            <Button variant="primary" onClick={() => handleStatusChange('Strategy Reviewed', editNote)} disabled={actionLoading}>
+                                {actionLoading ? 'Sending...' : 'Recommend to Principal'}
                             </Button>
                         </Modal.Footer>
                     </Modal>
 
-                    <Modal show={showReject} onHide={closeAll} centered contentClassName="modal-content-danger">
+                    <Modal show={showEdit} onHide={closeAll} centered backdrop="static" keyboard={false} size="lg">
+                        <Modal.Header closeButton className="modal-header-mubs">
+                            <Modal.Title>Request Edits</Modal.Title>
+                        </Modal.Header>
+                        <Modal.Body>
+                            <p>Request changes for <strong>{selectedProposal.title}</strong>. The committee will see your feedback and can resubmit.</p>
+                            <Form.Group className="mb-3">
+                                <Form.Label>Feedback to committee (required)</Form.Label>
+                                <Form.Control as="textarea" rows={3} value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="Describe what needs to be revised..." required />
+                            </Form.Group>
+                        </Modal.Body>
+                        <Modal.Footer>
+                            <Button variant="light" onClick={closeAll}>Cancel</Button>
+                            <Button variant="warning" onClick={() => handleStatusChange('Edit Requested', editNote)} disabled={actionLoading || !editNote.trim()}>
+                                {actionLoading ? 'Sending...' : 'Request Edits'}
+                            </Button>
+                        </Modal.Footer>
+                    </Modal>
+
+                    <Modal show={showReject} onHide={closeAll} centered contentClassName="modal-content-danger" backdrop="static" keyboard={false} size="lg">
                         <Modal.Header closeButton className="modal-header-mubs bg-danger">
                             <Modal.Title>Reject Proposal</Modal.Title>
                         </Modal.Header>

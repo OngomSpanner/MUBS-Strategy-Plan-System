@@ -83,11 +83,18 @@ export default function LoginPage() {
         throw new Error(data.message || 'Invalid email or password');
       }
 
+      // First login with temporary password: must set new password
+      if (data?.user?.mustChangePassword) {
+        router.push('/set-password');
+        return; // keep loading until redirect
+      }
+
       const roles: string[] = Array.isArray(data?.user?.roles) ? data.user.roles : [];
       const activeRole: string | undefined = data?.user?.activeRole;
       router.push(pickRedirect(roles, activeRole));
     } catch (err: any) {
       setError(err.message || 'Invalid email or password');
+    } finally {
       setLoading(false);
     }
   };
@@ -155,9 +162,9 @@ export default function LoginPage() {
       <div
         className="card shadow-lg border-0"
         style={{
-          maxWidth: '440px',
+          maxWidth: '380px',
           width: '90%',
-          padding: '2rem 2rem',
+          padding: '1.5rem 1.75rem',
           borderRadius: '20px',
           background: 'rgba(255, 255, 255, 0.98)',
           backdropFilter: 'blur(20px)',
@@ -165,18 +172,18 @@ export default function LoginPage() {
           boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
         }}
       >
-        <div className="text-center mb-3">
+        <div className="text-center mb-2">
           <div className="mb-2 d-flex justify-content-center">
             <Image
               src="/logo.png"
               alt="MUBS Logo"
-              width={100}
-              height={100}
+              width={80}
+              height={80}
               style={{ objectFit: 'contain' }}
               priority
             />
           </div>
-          <h4 className="fw-bold mb-1" style={{ color: '#005696' }}>Strategic Plan System</h4>
+          <h5 className="fw-bold mb-1" style={{ color: '#005696' }}>Strategic Plan System</h5>
           <p className="text-muted small mb-0">Sign in to access your dashboard</p>
         </div>
 
@@ -188,7 +195,7 @@ export default function LoginPage() {
         )}
 
         <form onSubmit={handleLogin}>
-          <div className="form-floating mb-3">
+          <div className="form-floating mb-2">
             <input
               type="email"
               className="form-control"
@@ -201,7 +208,7 @@ export default function LoginPage() {
             />
             <label htmlFor="email" className="text-muted">Email address</label>
           </div>
-          <div className="form-floating mb-3 position-relative">
+          <div className="form-floating mb-2 position-relative">
             <input
               type={showPassword ? 'text' : 'password'}
               className="form-control pe-5"
@@ -226,7 +233,7 @@ export default function LoginPage() {
               </span>
             </button>
           </div>
-          <div className="d-flex justify-content-end mb-3 mt-n2">
+          <div className="d-flex justify-content-end mb-2 mt-n1">
             <button 
               type="button" 
               className="btn btn-link text-decoration-none small p-0"
@@ -249,9 +256,9 @@ export default function LoginPage() {
               borderRadius: '10px',
               background: 'linear-gradient(90deg, #005696 0%, #007ac3 100%)', // Brand blue gradient
               border: 'none',
-              height: '52px',
+              height: '46px',
               transition: 'transform 0.2s',
-              boxShadow: '0 4px 12px rgba(0,86,150,0.3)'
+              boxShadow: '0 4px 12px rgba(0,86,150,0.2)'
             }}
             onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
             onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
@@ -272,7 +279,7 @@ export default function LoginPage() {
             </div>
           </button>
 
-          <div className="d-flex align-items-center my-3">
+          <div className="d-flex align-items-center my-2">
             <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
             <span className="mx-3 text-muted small fw-medium">OR CONTINUE WITH</span>
             <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
@@ -284,14 +291,14 @@ export default function LoginPage() {
               onError={() => setError('Google Sign-In failed')}
               useOneTap
               theme="outline"
-              size="large"
+              size="medium"
               shape="pill"
               text="signin_with"
             />
           </div>
         </form>
 
-        <div className="text-center mt-4">
+        <div className="text-center mt-3">
           {/* Subtle line with brand colors */}
           <div className="mx-auto mb-3" style={{ height: '3px', width: '50px', display: 'flex', borderRadius: '4px', overflow: 'hidden' }}>
             <div style={{ flex: 1, background: '#e31837' }}></div>
@@ -305,7 +312,7 @@ export default function LoginPage() {
       </div>
 
       {/* Forgot Password Modal */}
-      <Modal show={showForgotModal} onHide={() => !forgotLoading && setShowForgotModal(false)} centered>
+      <Modal show={showForgotModal} onHide={() => !forgotLoading && setShowForgotModal(false)} centered backdrop="static" keyboard={false} size="lg">
         <Modal.Header closeButton className="modal-header-mubs">
           <Modal.Title className="fw-bold d-flex align-items-center gap-2">
             <span className="material-symbols-outlined">lock_reset</span>

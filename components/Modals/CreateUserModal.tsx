@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap';
 import { formatRoleForDisplay } from '@/lib/role-routing';
+import { COMMITTEE_TYPES } from '@/lib/committee-types';
 
 interface CreateUserModalProps {
   show: boolean;
@@ -21,11 +22,16 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
     email: '',
     role: '',
     department_id: '' as string | number,
-    password: ''
+    password: '',
+    committee_types: [] as string[],
   });
   const [roles, setRoles] = useState<string[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
+
+  const hasCommitteeRole = formData.role
+    ? formData.role.split(',').map((r) => r.trim()).filter(Boolean).some((r) => r === 'committee_member' || formatRoleForDisplay(r) === 'Committee Member')
+    : false;
 
   useEffect(() => {
     if (!show) return;
@@ -34,7 +40,7 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
       try {
         const [rolesRes, deptRes] = await Promise.all([
           fetch('/api/users/roles'),
-          fetch('/api/departments')
+          fetch('/api/departments?units_only=true')
         ]);
         if (rolesRes.ok) {
           const data = await rolesRes.json();
@@ -70,7 +76,8 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
           email: formData.email,
           password: formData.password || undefined,
           role: roleList.join(','),
-          department_id: departmentId
+          department_id: departmentId,
+          committee_types: hasCommitteeRole ? formData.committee_types : undefined,
         })
       });
 
@@ -82,11 +89,13 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
           email: '',
           role: '',
           department_id: '',
-          password: ''
+          password: '',
+          committee_types: [],
         });
       } else {
         const data = await response.json().catch(() => ({}));
-        alert(data.message || 'Failed to create user.');
+        const detail = data.detail ? ` ${data.detail}` : '';
+        alert(data.message || 'Failed to create user.' + detail);
       }
     } catch (error) {
       console.error('Error creating user:', error);
@@ -95,7 +104,7 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
   };
 
   return (
-    <Modal show={show} onHide={onHide} centered size="lg">
+    <Modal show={show} onHide={onHide} centered size="lg" backdrop="static" keyboard={false}>
       <Modal.Header closeButton className="modal-header-mubs">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2">
           <span className="material-symbols-outlined">person_add</span>
@@ -160,12 +169,12 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
               </div>
             </div>
             <div className="col-md-6">
-              <Form.Label className="fw-bold small">Department</Form.Label>
+              <Form.Label className="fw-bold small">Department/Unit</Form.Label>
               <Form.Select
                 value={formData.department_id === '' ? '' : String(formData.department_id)}
                 onChange={(e) => setFormData({ ...formData, department_id: e.target.value === '' ? '' : Number(e.target.value) })}
               >
-                <option value="">Select department</option>
+                <option value="">Select department/unit</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
@@ -173,6 +182,35 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
                 ))}
               </Form.Select>
             </div>
+            {hasCommitteeRole && (
+              <div className="col-12">
+                <Form.Label className="fw-bold small">Committees (select committees this member belongs to)</Form.Label>
+                <div className="d-flex flex-wrap gap-2 p-2 border rounded bg-light">
+                  {COMMITTEE_TYPES.map((ct) => {
+                    const checked = formData.committee_types.includes(ct);
+                    return (
+                      <div key={ct} className="form-check">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          id={`committee-${ct}`}
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...formData.committee_types, ct]
+                              : formData.committee_types.filter((x) => x !== ct);
+                            setFormData({ ...formData, committee_types: next });
+                          }}
+                        />
+                        <label className="form-check-label small" htmlFor={`committee-${ct}`}>
+                          {ct}
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="col-12">
               <Form.Label className="fw-bold small">Temporary Password</Form.Label>
               <Form.Control
@@ -181,6 +219,7 @@ export default function CreateUserModal({ show, onHide, onUserCreated }: CreateU
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
+              <Form.Text className="text-muted small">User must set a new password on first login.</Form.Text>
             </div>
             <div className="col-12">
               <Form.Check

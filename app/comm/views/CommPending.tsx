@@ -128,7 +128,7 @@ export default function CommPending() {
                                 </div>
                             </div>
                             <div className="modal-footer border-0">
-                                <button type="button" className="btn btn-outline-secondary" onClick={closeDetail}>Close</button>
+
                             </div>
                         </div>
                     </div>

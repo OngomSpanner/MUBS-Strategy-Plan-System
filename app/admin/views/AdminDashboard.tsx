@@ -78,14 +78,7 @@ export default function AdminDashboard() {
 
     return (
         <Layout>
-            <div className="alert alert-warning alert-strip alert-dismissible fade show mb-4 d-flex align-items-center gap-2" role="alert">
-                <span className="material-symbols-outlined">warning</span>
-                <div>
-                    <strong>Attention:</strong> {stats.delayedActivities} strategic activities have exceeded their deadlines.
-                    <a href="/tracking" className="alert-link"> Review now →</a>
-                </div>
-                <button type="button" className="btn-close ms-auto" data-bs-dismiss="alert"></button>
-            </div>
+
 
             {/* Stat Cards */}
             <div className="row g-4 mb-4">

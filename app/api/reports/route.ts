@@ -56,7 +56,7 @@ export async function GET(request: Request) {
               END) AS delayed_cnt,
               ROUND(IFNULL(AVG(sa.progress), 0)) AS avg_progress
             FROM departments d
-            LEFT JOIN strategic_activities sa ON d.id = sa.department_id
+            LEFT JOIN strategic_activities sa ON d.id = sa.department_id AND sa.parent_id IS NULL AND sa.source IS NOT NULL
             ${whereClause}
             GROUP BY d.id, d.name
             HAVING COUNT(sa.id) > 0 OR ? = 1
@@ -113,10 +113,12 @@ export async function GET(request: Request) {
               GROUP BY assigned_to_user_id
             ) assigned ON assigned.assigned_to_user_id = u.id
             LEFT JOIN (
-              SELECT assigned_to_user_id, COUNT(*) AS cnt
-              FROM activity_assignments
-              WHERE status IN ('completed', 'submitted')
-              GROUP BY assigned_to_user_id
+              SELECT aa.assigned_to_user_id, COUNT(*) AS cnt
+              FROM activity_assignments aa
+              LEFT JOIN strategic_activities sa ON aa.activity_id = sa.id
+              WHERE aa.status IN ('completed', 'submitted', 'evaluated')
+                 OR sa.status = 'completed'
+              GROUP BY aa.assigned_to_user_id
             ) compl ON compl.assigned_to_user_id = u.id
             ${whereClause}
             ORDER BY d.name ASC, u.full_name ASC
@@ -145,6 +147,7 @@ export async function GET(request: Request) {
                 ROUND(IFNULL(AVG(progress), 0)) AS avg_progress,
                 COUNT(id) AS count
               FROM strategic_activities
+              WHERE parent_id IS NULL AND source IS NOT NULL
               GROUP BY pillar
               ORDER BY count DESC, pillar ASC
             `,
@@ -178,6 +181,7 @@ export async function GET(request: Request) {
                 SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress,
                 SUM(CASE WHEN status = 'overdue' OR (end_date IS NOT NULL AND end_date < CURDATE() AND status != 'completed') THEN 1 ELSE 0 END) AS delayed
               FROM strategic_activities
+              WHERE parent_id IS NULL AND source IS NOT NULL
             `,
             values: []
           })) as any[];
@@ -222,7 +226,7 @@ export async function GET(request: Request) {
                 d.name AS label,
                 ROUND(IFNULL(AVG(sa.progress), 0)) AS avg_progress
               FROM departments d
-              LEFT JOIN strategic_activities sa ON sa.department_id = d.id
+              LEFT JOIN strategic_activities sa ON sa.department_id = d.id AND sa.parent_id IS NULL AND sa.source IS NOT NULL
                 AND (sa.updated_at >= ? AND sa.updated_at <= ? OR (sa.updated_at IS NULL AND sa.created_at >= ? AND sa.created_at <= ?))
               WHERE d.is_active = 1 AND d.parent_id IS NOT NULL
               GROUP BY d.id, d.name
@@ -234,7 +238,7 @@ export async function GET(request: Request) {
                 d.name AS label,
                 ROUND(IFNULL(AVG(sa.progress), 0)) AS avg_progress
               FROM departments d
-              LEFT JOIN strategic_activities sa ON sa.department_id = d.id
+              LEFT JOIN strategic_activities sa ON sa.department_id = d.id AND sa.parent_id IS NULL AND sa.source IS NOT NULL
               WHERE d.is_active = 1 AND d.parent_id IS NOT NULL
               GROUP BY d.id, d.name
               ORDER BY d.name ASC
@@ -255,7 +259,8 @@ export async function GET(request: Request) {
       case 'delayed-activities': {
         const vals: any[] = [];
         let whereClause = `
-          WHERE (sa.status = 'overdue'
+          WHERE sa.parent_id IS NULL AND sa.source IS NOT NULL
+            AND (sa.status = 'overdue'
             OR (sa.end_date IS NOT NULL AND sa.end_date < CURDATE() AND sa.status != 'completed'))
         `;
         if (department && department !== 'All Departments') {

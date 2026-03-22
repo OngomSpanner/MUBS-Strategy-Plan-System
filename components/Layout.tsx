@@ -31,6 +31,8 @@ function LayoutContent({ children, sidebarOpen, setSidebarOpen }: any) {
 
       // Principal specific
       'executive': 'Executive Overview',
+      'analytics': 'Performance Analytics',
+      'proposals': 'Committee proposals',
       'compliance': 'Performance & Compliance',
 
       // HOD specific
@@ -39,14 +41,12 @@ function LayoutContent({ children, sidebarOpen, setSidebarOpen }: any) {
       // Both HOD and Staff specific shared keys
       'tasks': 'Task Management',
       'staff': 'Staff Roster & HR',
-      'submissions': 'Submissions Tracking',
-      'evaluations': 'Staff Evaluations',
+      'submissions': 'Submissions & Feedback Tracking',
+      'evaluations': 'Evaluations',
 
       // Staff specific
-      'deadlines': 'My Deadlines',
-      'notifications': 'Notifications Inbox',
-      'submit': 'Submit Task Update',
-      'feedback': 'Performance Feedback',
+      'deadlines': 'Notifications & Deadlines',
+      'notifications': 'Notifications & Deadlines',
     };
     return pageTitles[key] || 'Dashboard';
   };

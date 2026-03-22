@@ -3,7 +3,7 @@ import { query } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
         const cookieStore = await cookies();
         const token = cookieStore.get('token')?.value;
@@ -17,11 +17,27 @@ export async function GET() {
             return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
         }
 
-        // Fetch all active departments with parent_id and unit_type for filtering (faculty/office vs department/unit)
-        const departments = await query({
-            query: 'SELECT id, name, parent_id, unit_type FROM departments WHERE is_active = 1 ORDER BY parent_id IS NULL DESC, name ASC',
-            values: []
-        }) as any[];
+        const { searchParams } = new URL(request.url);
+        const unitsOnly = searchParams.get('units_only') === 'true' || searchParams.get('units_only') === '1';
+        let departments: any[];
+        try {
+            departments = await query({
+                query: unitsOnly
+                    ? "SELECT id, name, parent_id, unit_type FROM departments WHERE is_active = 1 AND unit_type IN ('department', 'unit') ORDER BY name ASC"
+                    : 'SELECT id, name, parent_id, unit_type FROM departments WHERE is_active = 1 ORDER BY parent_id IS NULL DESC, name ASC',
+                values: []
+            }) as any[];
+        } catch (e: any) {
+            if (e?.code === 'ER_BAD_FIELD_ERROR' || e?.message?.includes('is_active') || e?.message?.includes('unit_type')) {
+                departments = await query({
+                    query: 'SELECT id, name, parent_id FROM departments ORDER BY name ASC',
+                    values: []
+                }) as any[];
+                departments = (departments || []).map((d: any) => ({ ...d, unit_type: null }));
+            } else {
+                throw e;
+            }
+        }
 
         return NextResponse.json(departments);
 

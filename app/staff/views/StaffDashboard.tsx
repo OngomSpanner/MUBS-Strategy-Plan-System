@@ -4,8 +4,24 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
 import StatCard from '@/components/StatCard';
+import TaskSubmissionModal from '@/components/Staff/TaskSubmissionModal';
+import SubmissionDetailModal from '@/components/Staff/SubmissionDetailModal';
+
+interface WeeklyBucket {
+    weekLabel: string;
+    weekStart: string;
+    complete: number;
+    incomplete: number;
+    notDone: number;
+    total: number;
+}
 
 interface DashboardData {
+    user?: {
+        fullName: string;
+        position: string | null;
+        departmentName: string | null;
+    };
     stats: {
         assigned: number;
         overdue: number;
@@ -13,12 +29,23 @@ interface DashboardData {
         completed: number;
     };
     deadlines: any[];
-    feedback: any[];
 }
 
 export default function StaffDashboard() {
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [selectedTask, setSelectedTask] = useState<any>(null);
+    const [showModal, setShowModal] = useState(false);
+    const [showViewModal, setShowViewModal] = useState(false);
+
+    const handleOpenModal = (task: any) => {
+        setSelectedTask(task);
+        if (task.status === "Completed" || task.status === "Under Review" || task.status === "Incomplete") {
+            setShowViewModal(true);
+        } else {
+            setShowModal(true);
+        }
+    };
 
     useEffect(() => {
         const fetchData = async () => {
@@ -46,45 +73,48 @@ export default function StaffDashboard() {
 
     const stats = data?.stats || { assigned: 0, overdue: 0, inProgress: 0, completed: 0 };
     const deadlines = data?.deadlines || [];
-    const feedbackList = data?.feedback || [];
+    const user = data?.user;
+    const welcomeTitle = user?.fullName ? `Welcome back, ${user.fullName}` : 'Staff Dashboard';
+    const welcomeSubtitle = [user?.position, user?.departmentName].filter(Boolean).join(' · ') || 'Your tasks, deadlines, and progress';
+
+    const getStatusOverlay = (status: string) => {
+        const colors: Record<string, string> = {
+            'In Progress': '#0ea5e9',
+            'Pending': '#f59e0b',
+            'Delayed': '#ef4444',
+            'Under Review': '#8b5cf6',
+            'Completed': '#10b981'
+        };
+        return (
+            <span className="badge rounded-pill" style={{ 
+                background: `${colors[status] || '#64748b'}15`, 
+                color: colors[status] || '#64748b',
+                fontSize: '.65rem',
+                fontWeight: 'bold',
+                padding: '4px 8px'
+            }}>
+                {status.toUpperCase()}
+            </span>
+        );
+    };
 
     return (
         <div className="content-area w-100">
-            {/* Welcome banner */}
-            <div className="p-4 mb-4 rounded-4" style={{
-                background: 'linear-gradient(135deg, var(--mubs-blue) 0%, var(--mubs-navy) 100%)',
-                border: '1px solid rgba(255,255,255,.1)',
-                boxShadow: '0 8px 32px rgba(0, 86, 150, 0.15)'
-            }}>
+            {/* Hero banner */}
+            <div className="p-4 mb-4 rounded-3" style={{ background: 'linear-gradient(135deg, var(--mubs-blue) 0%, var(--mubs-navy) 100%)', border: '1px solid rgba(147, 197, 253, 0.2)' }}>
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
                     <div>
-                        <div className="d-flex align-items-center gap-3 mb-1">
-                            <div className="profile-avatar text-white fw-bold d-flex align-items-center justify-content-center" style={{ width: '56px', height: '56px', fontSize: '1.2rem', borderRadius: '14px', background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.2)' }}>JA</div>
+                        <div className="d-flex align-items-center gap-2 mb-1">
+                            <span className="material-symbols-outlined" style={{ color: '#93c5fd', fontSize: '28px' }}>assignment_ind</span>
                             <div>
-                                <div className="fw-black text-white" style={{ fontSize: '1.25rem' }}>Welcome back, Jane 👋</div>
-                                <div className="text-white-50" style={{ fontSize: '.85rem' }}>Lecturer · Faculty of Computing · FY 2024–25</div>
+                                <div className="fw-black text-white" style={{ fontSize: '1.1rem' }}>{welcomeTitle}</div>
+                                <div style={{ fontSize: '.75rem', color: '#bfdbfe' }}>{welcomeSubtitle}</div>
                             </div>
-                        </div>
-                    </div>
-                    <div className="text-end">
-                        <div className="text-white-50" style={{ fontSize: '.72rem', textTransform: 'uppercase', letterSpacing: '.1em' }}>My Completion Rate</div>
-                        <div className="fw-black text-white" style={{ fontSize: '2.5rem', lineHeight: '1' }}>
-                            {stats.assigned > 0 ? Math.round((stats.completed / stats.assigned) * 100) : 0}%
-                        </div>
-                        <div style={{ width: '160px', height: '8px', background: 'rgba(255,255,255,.2)', borderRadius: '99px', overflow: 'hidden', marginTop: '6px' }}>
-                            <div style={{
-                                width: `${stats.assigned > 0 ? (stats.completed / stats.assigned) * 100 : 0}%`,
-                                height: '100%',
-                                background: 'var(--mubs-yellow)',
-                                borderRadius: '99px',
-                                transition: 'width 1s ease-in-out'
-                            }}></div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Stat cards */}
             <div className="row g-4 mb-4">
                 <div className="col-12 col-sm-6 col-xl-3">
                     <StatCard
@@ -118,10 +148,10 @@ export default function StaffDashboard() {
                 </div>
                 <div className="col-12 col-sm-6 col-xl-3">
                     <StatCard
-                        icon="grade"
-                        label="Average Score"
-                        value={data?.averageScore != null ? String(data.averageScore) : '—'}
-                        badge={data?.averageScore != null ? (data.averageScore >= 4 ? 'Excellent' : data.averageScore >= 3 ? 'Good' : 'Improving') : 'No ratings'}
+                        icon="task_alt"
+                        label="Completed"
+                        value={stats.completed}
+                        badge="Task Success"
                         badgeIcon="verified"
                         color="green"
                     />
@@ -131,7 +161,7 @@ export default function StaffDashboard() {
             {/* Quick Actions */}
             <div className="row g-3 mb-4">
                 <div className="col-12 col-md-4">
-                    <Link href="/staff?pg=submit" className="text-decoration-none h-100">
+                    <Link href="/staff?pg=tasks" className="text-decoration-none h-100">
                         <div className="quick-action-card p-3 d-flex align-items-center gap-3 bg-white border rounded-4 shadow-sm h-100" style={{ transition: 'all 0.2s', cursor: 'pointer' }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.1)'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}>
                             <div className="icon-box d-flex align-items-center justify-content-center" style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(0, 86, 150, 0.1)' }}>
                                 <span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)', fontSize: '24px' }}>add_task</span>
@@ -157,7 +187,7 @@ export default function StaffDashboard() {
                     </Link>
                 </div>
                 <div className="col-12 col-md-4">
-                    <Link href="/staff?pg=deadlines" className="text-decoration-none h-100">
+                    <Link href="/staff?pg=notifications" className="text-decoration-none h-100">
                         <div className="quick-action-card p-3 d-flex align-items-center gap-3 bg-white border rounded-4 shadow-sm h-100" style={{ transition: 'all 0.2s', cursor: 'pointer' }} onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.1)'; }} onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}>
                             <div className="icon-box d-flex align-items-center justify-content-center" style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(227, 24, 55, 0.1)' }}>
                                 <span className="material-symbols-outlined" style={{ color: 'var(--mubs-red)', fontSize: '24px' }}>event_note</span>
@@ -239,11 +269,17 @@ export default function StaffDashboard() {
                                                     <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: '14px' }}>calendar_today</span>
                                                     Due {new Date(item.dueDate).toLocaleDateString()}
                                                 </span>
-                                                <Link href="/staff?pg=submit" className="btn btn-sm fw-black text-white px-3 shadow-sm align-middle" style={{
-                                                    background: item.status === 'Delayed' ? 'var(--mubs-red)' : 'var(--mubs-blue)',
-                                                    borderRadius: '8px',
-                                                    fontSize: '.75rem'
-                                                }}>UPDATE</Link>
+                                                <button 
+                                                    onClick={() => handleOpenModal(item)}
+                                                    className="btn btn-sm fw-black text-white px-3 shadow-sm align-middle" 
+                                                    style={{
+                                                        background: item.status === 'Delayed' ? 'var(--mubs-red)' : 'var(--mubs-blue)',
+                                                        borderRadius: '8px',
+                                                        fontSize: '.75rem'
+                                                    }}
+                                                >
+                                                    {item.status === "Completed" || item.status === "Under Review" || item.status === "Incomplete" ? "VIEW" : "UPDATE"}
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -280,7 +316,7 @@ export default function StaffDashboard() {
                                 </div>
                                 <h5 className="mb-0 fw-black" style={{ color: 'var(--mubs-navy)', fontSize: '1.1rem' }}>Upcoming Deadlines</h5>
                             </div>
-                            <Link href="/staff?pg=deadlines" className="btn btn-sm btn-link text-decoration-none fw-black p-0" style={{ fontSize: '.8rem', color: 'var(--mubs-red)' }}>All</Link>
+                            <Link href="/staff?pg=notifications" className="btn btn-sm btn-link text-decoration-none fw-black p-0" style={{ fontSize: '.8rem', color: 'var(--mubs-red)' }}>All</Link>
                         </div>
                         <div className="p-4 pt-0">
                             <div className="d-flex flex-column gap-3">
@@ -309,55 +345,25 @@ export default function StaffDashboard() {
                         </div>
                     </div>
 
-                    {/* Latest feedback */}
-                    <div className="table-card overflow-hidden" style={{
-                        background: 'rgba(255, 255, 255, 0.9)',
-                        backdropFilter: 'blur(10px)',
-                        border: '1px solid rgba(16, 185, 129, 0.05)',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
-                        borderRadius: '20px'
-                    }}>
-                        <div className="table-card-header p-4">
-                            <div className="d-flex align-items-center gap-3">
-                                <div style={{
-                                    width: '36px', height: '36px',
-                                    background: 'rgba(16, 185, 129, 0.1)',
-                                    borderRadius: '10px',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                }}>
-                                    <span className="material-symbols-outlined" style={{ color: '#059669', fontSize: '22px' }}>auto_awesome</span>
-                                </div>
-                                <h5 className="mb-0 fw-black" style={{ color: 'var(--mubs-navy)', fontSize: '1.1rem' }}>Latest Feedback</h5>
-                            </div>
-                            <Link href="/staff?pg=feedback" className="btn btn-sm btn-link text-decoration-none fw-black p-0" style={{ fontSize: '.8rem', color: '#059669' }}>View All</Link>
-                        </div>
-                        <div className="p-4 pt-0">
-                            {feedbackList.map((feedback, index) => (
-                                <div key={feedback.id ?? index} className="feedback-premium-card p-3 rounded-4 mb-3" style={{
-                                    background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)',
-                                    border: '1px solid #dcfce7',
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-                                }}>
-                                    <div className="d-flex align-items-center justify-content-between mb-2">
-                                        <div className="fw-black text-dark text-truncate" style={{ fontSize: '.9rem', maxWidth: '180px' }}>{feedback.task}</div>
-                                        <div className="d-flex align-items-center gap-1">
-                                            <span className="fw-black" style={{ color: '#15803d', fontSize: '1rem' }}>{(feedback.score ?? 0).toFixed(1)}</span>
-                                            <span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#fbbf24', fontVariationSettings: "'FILL' 1" }}>star</span>
-                                        </div>
-                                    </div>
-                                    <p className="mb-2" style={{ fontSize: '.8rem', color: '#166534', lineHeight: '1.5', opacity: 0.8 }}>
-                                        Keep up the standard. Progress is visible.
-                                    </p>
-                                    <div className="d-flex align-items-center justify-content-between border-top pt-2 mt-2" style={{ borderColor: 'rgba(21, 128, 61, 0.1)' }}>
-                                        <span className="badge" style={{ background: '#dcfce7', color: '#15803d', fontSize: '.6rem' }}>{feedback.status}</span>
-                                        <span className="text-muted" style={{ fontSize: '.65rem' }}>{feedback.date}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
                 </div>
             </div>
+            {selectedTask && (
+                <TaskSubmissionModal 
+                    key={`submit-${selectedTask.id}`}
+                    show={showModal} 
+                    onHide={() => setShowModal(false)} 
+                    task={selectedTask}
+                />
+            )}
+            {selectedTask && (
+                <SubmissionDetailModal
+                    key={`view-${selectedTask.id}`}
+                    show={showViewModal}
+                    onHide={() => setShowViewModal(false)}
+                    taskId={selectedTask.id}
+                    submission={selectedTask}
+                />
+            )}
         </div>
     );
 }

@@ -5,9 +5,7 @@ import { Suspense } from 'react';
 import Layout from '../../components/Layout';
 import StaffDashboard from './views/StaffDashboard';
 import StaffTasks from './views/StaffTasks';
-import StaffDeadlines from './views/StaffDeadlines';
-import StaffNotifications from './views/StaffNotifications';
-import StaffSubmitReport from './views/StaffSubmitReport';
+import StaffUpdates from './views/StaffUpdates';
 import StaffSubmissions from './views/StaffSubmissions';
 import StaffFeedback from './views/StaffFeedback';
 
@@ -21,15 +19,10 @@ function StaffContent() {
         case 'tasks':
             return <StaffTasks />;
         case 'deadlines':
-            return <StaffDeadlines />;
         case 'notifications':
-            return <StaffNotifications />;
-        case 'submit':
-            return <StaffSubmitReport />;
+            return <StaffUpdates />;
         case 'submissions':
             return <StaffSubmissions />;
-        case 'feedback':
-            return <StaffFeedback />;
         default:
             return <StaffDashboard />;
     }

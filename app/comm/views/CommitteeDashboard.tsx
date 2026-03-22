@@ -25,6 +25,7 @@ interface CommitteeData {
         bgColor: string;
         iconColor: string;
     }>;
+    committees?: string[];
 }
 
 export default function CommitteeDashboard() {
@@ -87,7 +88,11 @@ export default function CommitteeDashboard() {
                             <span className="material-symbols-outlined" style={{ color: '#93c5fd', fontSize: '28px' }}>groups</span>
                             <div>
                                 <h4 className="fw-bold mb-0">Committee Overview</h4>
-                                <p className="mb-0 opacity-75" style={{ color: '#93c5fd' }}>Academic Board Committee Dashboard</p>
+                                <p className="mb-0 opacity-75" style={{ color: '#93c5fd' }}>
+                                    {data.committees && data.committees.length > 0
+                                        ? (data.committees.length === 1 ? data.committees[0] : 'My committees') + ' Dashboard'
+                                        : 'Committee Dashboard'}
+                                </p>
                             </div>
                         </div>
                     </div>

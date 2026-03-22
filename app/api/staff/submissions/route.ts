@@ -23,14 +23,21 @@ export async function GET() {
             query: `
                 SELECT 
                     sr.id,
+                    aa.id as task_id,
+                    sa.id as activity_id,
                     sa.title as report_name,
+                    sa.description as task_description,
+                    aa.start_date,
+                    aa.end_date,
                     p.title as activity_title,
                     sr.updated_at as submitted_at,
                     sr.submitted_at as submitted_at_ts,
                     sr.status as db_status,
                     e.rating,
                     sr.progress_percentage as progress,
+                    sr.kpi_actual_value,
                     sr.achievements as description,
+                    sr.attachments,
                     e.qualitative_feedback as reviewer_notes
                 FROM staff_reports sr
                 JOIN activity_assignments aa ON sr.activity_assignment_id = aa.id
@@ -47,7 +54,9 @@ export async function GET() {
             'draft': (r: any) => (r.rating != null ? 'Returned' : 'In Progress'),
             'submitted': 'Under Review',
             'evaluated': 'Completed',
-            'acknowledged': 'Completed'
+            'acknowledged': 'Completed',
+            'incomplete': 'Incomplete',
+            'not_done': 'Not Done'
         };
 
         const submissions = submissionsRecords.map((r: any) => {
@@ -56,23 +65,37 @@ export async function GET() {
             const score = r.rating ? ratingToScore[r.rating] : null;
             return {
                 id: r.id,
+                task_id: r.task_id,
                 report_name: r.report_name,
                 activity_title: r.activity_title,
+                task_description: r.task_description,
+                start_date: r.start_date,
+                end_date: r.end_date,
                 submitted_at: r.submitted_at_ts || r.submitted_at,
                 status,
                 score,
                 progress: r.progress,
+                kpi_actual_value: r.kpi_actual_value,
                 description: r.description,
+                attachments: r.attachments,
                 reviewer_notes: r.reviewer_notes
             };
         });
 
         // Stats: total submitted = non-draft; under review = submitted; reviewed = evaluated/acknowledged; returned = draft with evaluation
+        const reviewed = submissions.filter((r: any) => r.status === 'Completed').length;
+        const returned = submissions.filter((r: any) => r.status === 'Returned').length;
+        const totalEvaluations = reviewed + returned;
+
+        const incomplete = submissions.filter((r: any) => r.status === 'Incomplete').length;
         const stats = {
             totalSubmitted: submissionsRecords.filter((r: any) => r.db_status !== 'draft').length,
             underReview: submissions.filter((r: any) => r.status === 'Under Review').length,
-            reviewed: submissions.filter((r: any) => r.status === 'Completed').length,
-            returned: submissions.filter((r: any) => r.status === 'Returned').length
+            reviewed,
+            returned,
+            incomplete,
+            totalEvaluations,
+            completionRate: totalEvaluations > 0 ? Math.round((reviewed / totalEvaluations) * 100) : 0
         };
 
         return NextResponse.json({
@@ -100,18 +123,16 @@ export async function POST(req: Request) {
 
         const formData = await req.formData();
         const taskId = formData.get('taskId') as string; // This is sa.id
-        const progress = parseInt(formData.get('progress') as string || '0', 10);
         const description = (formData.get('description') as string)?.trim() ?? '';
         const evidenceLink = formData.get('evidenceLink') as string;
         const isDraft = formData.get('isDraft') === 'true';
         const file = formData.get('file') as File | null;
 
         if (!taskId) throw new Error('Task ID is required');
-        if (!isDraft && !description) throw new Error('Report details are required when submitting for review');
 
-        // Look up the activity assignment ID
+        // Look up the activity assignment ID (taskId is now the specific aa.id)
         const aaRecords = await query({
-            query: 'SELECT id FROM activity_assignments WHERE activity_id = ? AND assigned_to_user_id = ? ORDER BY id DESC LIMIT 1',
+            query: 'SELECT id FROM activity_assignments WHERE id = ? AND assigned_to_user_id = ?',
             values: [taskId, decoded.userId]
         }) as any[];
 
@@ -154,24 +175,25 @@ export async function POST(req: Request) {
             await query({
                 query: `
                     UPDATE staff_reports 
-                    SET progress_percentage = ?, 
+                    SET progress_percentage = 0, 
                         achievements = ?, 
                         attachments = ?, 
+                        kpi_actual_value = ?,
                         updated_at = NOW(),
                         status = ?,
                         submitted_at = IF(? = 'submitted', NOW(), submitted_at)
                     WHERE id = ?
                 `,
-                values: [progress, description || null, combinedEvidence || null, reportStatus, reportStatus, existingReport[0].id]
+                values: [description || null, combinedEvidence || null, formData.get('kpiActualValue') || null, reportStatus, reportStatus, existingReport[0].id]
             });
         } else {
             await query({
                 query: `
                     INSERT INTO staff_reports 
-                    (activity_assignment_id, submitted_by, report_date, progress_percentage, achievements, attachments, status, submitted_at)
-                    VALUES (?, ?, CURDATE(), ?, ?, ?, ?, IF(? = 'submitted', NOW(), NULL))
+                    (activity_assignment_id, submitted_by, report_date, progress_percentage, achievements, attachments, kpi_actual_value, status, submitted_at)
+                    VALUES (?, ?, CURDATE(), 0, ?, ?, ?, ?, IF(? = 'submitted', NOW(), NULL))
                 `,
-                values: [assignmentId, decoded.userId, progress, description || null, combinedEvidence || null, reportStatus, reportStatus]
+                values: [assignmentId, decoded.userId, description || null, combinedEvidence || null, formData.get('kpiActualValue') || null, reportStatus, reportStatus]
             });
         }
 
@@ -185,16 +207,6 @@ export async function POST(req: Request) {
             values: [reportStatus === 'submitted' ? 'submitted' : 'in_progress', assignmentId]
         });
         
-        // Update the global strategic activity progress
-        await query({
-            query: `
-                UPDATE strategic_activities 
-                SET progress = ? 
-                WHERE id = ?
-            `,
-            values: [progress, taskId]
-        });
-
         return NextResponse.json({ success: true, message: isDraft ? 'Draft saved' : 'Report submitted successfully' });
 
     } catch (error: any) {

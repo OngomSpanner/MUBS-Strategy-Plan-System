@@ -275,86 +275,86 @@ export default function DepartmentStaff() {
 
             {/* View Profile Modal */}
             {profileStaff && (
-                <>
-                    <div className="modal-backdrop fade show" style={{ zIndex: 1040, background: 'rgba(15, 23, 42, 0.5)' }} onClick={() => setProfileStaff(null)} />
-                    <div className="modal fade show d-block" tabIndex={-1} style={{ zIndex: 1050 }} onClick={() => setProfileStaff(null)}>
-                        <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-                            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px' }}>
-                                <div className="modal-header border-bottom py-3 px-4">
-                                    <h5 className="modal-title fw-black text-dark d-flex align-items-center gap-2">
-                                        <span className="material-symbols-outlined text-primary">person</span>
-                                        Staff Profile
-                                    </h5>
-                                    <button type="button" className="btn-close" onClick={() => setProfileStaff(null)} aria-label="Close" />
-                                </div>
-                                <div className="modal-body p-4">
-                                    <div className="d-flex align-items-center gap-4 mb-4">
-                                        <div className="staff-avatar" style={{
-                                            background: 'var(--mubs-blue)',
-                                            width: '64px',
-                                            height: '64px',
-                                            borderRadius: '14px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            color: '#fff',
-                                            fontWeight: 'bold',
-                                            fontSize: '1.5rem'
-                                        }}>
-                                            {getInitials(profileStaff.full_name)}
-                                        </div>
-                                        <div>
-                                            <h6 className="fw-black text-dark mb-1" style={{ fontSize: '1.1rem' }}>{profileStaff.full_name}</h6>
-                                            <div className="text-muted small">{profileStaff.email}</div>
-                                            <div className="fw-medium text-dark mt-1" style={{ fontSize: '.9rem' }}>{profileStaff.position || '—'}</div>
-                                        </div>
+                <div className={`modal fade ${profileStaff ? 'show d-block' : ''}`} tabIndex={-1} style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 1050, backdropFilter: 'blur(4px)' }}>
+                    <div className="modal-dialog modal-dialog-centered">
+                        <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px', overflow: 'hidden' }}>
+                            <div className="modal-header border-bottom-0 pb-0 px-4 pt-4">
+                                <h5 className="modal-title fw-bold text-dark d-flex align-items-center gap-2" style={{ fontSize: '1.1rem' }}>
+                                    <span className="material-symbols-outlined text-primary" style={{ fontSize: '24px' }}>person</span>
+                                    Staff Profile
+                                </h5>
+                                <button type="button" className="btn-close" onClick={() => setProfileStaff(null)}></button>
+                            </div>
+                            <div className="modal-body p-4 pt-3">
+                                <div className="d-flex align-items-center gap-4 mb-4">
+                                    <div className="staff-avatar" style={{
+                                        background: 'var(--mubs-blue)',
+                                        width: '64px',
+                                        height: '64px',
+                                        borderRadius: '14px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: '#fff',
+                                        fontWeight: 'bold',
+                                        fontSize: '1.5rem'
+                                    }}>
+                                        {getInitials(profileStaff.full_name)}
                                     </div>
-                                    <div className="row g-3">
-                                        <div className="col-6">
-                                            <div className="p-3 rounded-3 bg-light">
-                                                <div className="text-muted small text-uppercase fw-bold mb-1">Leave Status</div>
-                                                <span className="status-badge" style={{
-                                                    background: profileStaff.leave_status === 'On Duty' ? '#dcfce7' : '#fef9c3',
-                                                    color: profileStaff.leave_status === 'On Duty' ? '#15803d' : '#a16207',
-                                                    fontSize: '0.75rem'
-                                                }}>
-                                                    {profileStaff.leave_status === 'On Duty' ? 'Active' : profileStaff.leave_status}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="col-6">
-                                            <div className="p-3 rounded-3 bg-light">
-                                                <div className="text-muted small text-uppercase fw-bold mb-1">Contract End</div>
-                                                <div className="fw-medium text-dark">
-                                                    {profileStaff.contract_end_date
-                                                        ? new Date(profileStaff.contract_end_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                                                        : '—'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="col-12">
-                                            <div className="p-3 rounded-3 bg-light">
-                                                <div className="text-muted small text-uppercase fw-bold mb-1">Active Tasks</div>
-                                                <div className="fw-black text-primary" style={{ fontSize: '1.25rem' }}>{profileStaff.active_tasks} assigned</div>
-                                            </div>
-                                        </div>
+                                    <div>
+                                        <h6 className="fw-black text-dark mb-1" style={{ fontSize: '1.2rem' }}>{profileStaff.full_name}</h6>
+                                        <div className="text-muted" style={{ fontSize: '0.9rem' }}>{profileStaff.email}</div>
+                                        <div className="text-primary fw-bold mt-1" style={{ fontSize: '0.95rem' }}>{profileStaff.position || '—'}</div>
                                     </div>
                                 </div>
-                                <div className="modal-footer border-top py-3 px-4">
-                                    <button type="button" className="btn btn-secondary fw-bold" onClick={() => setProfileStaff(null)}>Close</button>
-                                    <button
-                                        type="button"
-                                        className="btn btn-primary fw-bold d-flex align-items-center gap-2"
-                                        onClick={() => { setProfileStaff(null); router.push(`/department-head?pg=tasks&assignee=${encodeURIComponent(profileStaff.full_name)}`); }}
-                                    >
-                                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>assignment_ind</span>
-                                        Assign Task
-                                    </button>
+                                <div className="row g-3">
+                                    <div className="col-6">
+                                        <div className="p-3 rounded-3 bg-light border">
+                                            <div className="text-muted fw-bold mb-2" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Status</div>
+                                            <span className="status-badge" style={{
+                                                background: profileStaff.leave_status === 'On Duty' ? '#dcfce7' : '#fef9c3',
+                                                color: profileStaff.leave_status === 'On Duty' ? '#15803d' : '#a16207',
+                                                fontSize: '0.8rem',
+                                                padding: '4px 10px',
+                                                borderRadius: '6px'
+                                            }}>
+                                                {profileStaff.leave_status === 'On Duty' ? 'Active' : profileStaff.leave_status}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="col-6">
+                                        <div className="p-3 rounded-3 bg-light border text-center">
+                                            <div className="text-muted fw-bold mb-2" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Active Tasks</div>
+                                            <div className="fw-black text-primary" style={{ fontSize: '1.4rem', lineHeight: '1' }}>{profileStaff.active_tasks}</div>
+                                            <div className="text-muted mt-1" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>ASSIGNED</div>
+                                        </div>
+                                    </div>
+                                    <div className="col-12 mt-3">
+                                        <div className="p-3 rounded-3 bg-light border">
+                                            <div className="text-muted fw-bold mb-1" style={{ fontSize: '0.65rem', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Contract Details</div>
+                                            <div className="fw-bold text-dark mt-2" style={{ fontSize: '0.9rem' }}>
+                                                {profileStaff.contract_end_date
+                                                    ? `Ends on ${new Date(profileStaff.contract_end_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                                                    : 'Permanent / Open Contract'}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+                            </div>
+                            <div className="modal-footer border-top-0 p-4 pt-0 d-flex justify-content-end">
+                                <button
+                                    type="button"
+                                    className="btn btn-primary fw-bold px-4 py-2 d-flex align-items-center gap-2 shadow-sm"
+                                    style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)', borderRadius: '8px', fontSize: '0.9rem' }}
+                                    onClick={() => { setProfileStaff(null); router.push(`/department-head?pg=tasks&assignee=${encodeURIComponent(profileStaff.full_name)}`); }}
+                                >
+                                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>assignment_ind</span>
+                                    Assign Critical Task
+                                </button>
                             </div>
                         </div>
                     </div>
-                </>
+                </div>
             )}
         </div>
     );

@@ -43,12 +43,13 @@ interface Activity {
     end_date: string;
     progress: number;
     status: string;
-    priority: string;
     parent_id: number | null;
     parent_title?: string;
     strategic_objective: string;
     timeline: string;
     description: string;
+    actual_value?: number;
+    kpi_target_value?: number;
 }
 
 export default function StrategicView() {
@@ -59,8 +60,10 @@ export default function StrategicView() {
     const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
     const [modalMode, setModalMode] = useState<'create' | 'edit' | 'reassign'>('create');
     const [statusFilter, setStatusFilter] = useState('');
+    const [pillarFilter, setPillarFilter] = useState('All Pillars');
     const [facultyFilter, setFacultyFilter] = useState('All Offices/Faculties');
     const [departmentFilter, setDepartmentFilter] = useState('All Departments/Units');
+    const [searchQuery, setSearchQuery] = useState('');
     const [officeFacultyOptions, setOfficeFacultyOptions] = useState<{ id: number; name: string }[]>([]);
     const [departmentUnitOptions, setDepartmentUnitOptions] = useState<{ id: number; name: string }[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
@@ -72,11 +75,19 @@ export default function StrategicView() {
         delayed: 0
     });
 
+    const searchLower = searchQuery.trim().toLowerCase();
     const filteredActivities = activities.filter(a => {
         const matchStatus = !statusFilter || a.status === statusFilter;
         const matchDept = departmentFilter === 'All Departments/Units' || a.department === departmentFilter;
         const matchFaculty = facultyFilter === 'All Offices/Faculties' || a.faculty_office === facultyFilter;
-        return matchStatus && matchDept && matchFaculty;
+        const matchPillar = pillarFilter === 'All Pillars' || a.pillar === pillarFilter;
+        const matchSearch = !searchLower ||
+            (a.title && a.title.toLowerCase().includes(searchLower)) ||
+            (a.description && a.description.toLowerCase().includes(searchLower)) ||
+            (a.pillar && a.pillar.toLowerCase().includes(searchLower)) ||
+            (a.department && a.department.toLowerCase().includes(searchLower)) ||
+            (a.strategic_objective && a.strategic_objective.toLowerCase().includes(searchLower));
+        return matchStatus && matchDept && matchFaculty && matchPillar && matchSearch;
     });
 
     const totalPages = Math.max(1, Math.ceil(filteredActivities.length / PAGE_SIZE));
@@ -85,8 +96,8 @@ export default function StrategicView() {
         currentPage * PAGE_SIZE
     );
 
-    // Reset to page 1 whenever filters change
-    useEffect(() => { setCurrentPage(1); }, [statusFilter, departmentFilter, facultyFilter]);
+    // Reset to page 1 whenever filters or search change
+    useEffect(() => { setCurrentPage(1); }, [statusFilter, departmentFilter, facultyFilter, pillarFilter, searchQuery]);
 
     useEffect(() => {
         fetchActivities();
@@ -167,15 +178,7 @@ export default function StrategicView() {
         return { backgroundColor: style.bg, color: style.color };
     };
 
-    const getPriorityBadge = (priority: string) => {
-        const styles: { [key: string]: { bg: string; color: string } } = {
-            'High': { bg: '#fee2e2', color: '#b91c1c' },
-            'Medium': { bg: '#fef9c3', color: '#a16207' },
-            'Low': { bg: '#eff6ff', color: 'var(--mubs-blue)' }
-        };
-        const style = styles[priority] || styles['Medium'];
-        return { backgroundColor: style.bg, color: style.color };
-    };
+
 
     return (
         <Layout>
@@ -186,7 +189,7 @@ export default function StrategicView() {
                             <div className="stat-icon" style={{ background: '#eff6ff' }}>
                                 <span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)' }}>track_changes</span>
                             </div>
-                            <span className="stat-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)' }}>Plan 2024-28</span>
+                            <span className="stat-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)' }}>2025-2030</span>
                         </div>
                         <div className="stat-label">Main Activities</div>
                         <div className="stat-value">{stats.total}</div>
@@ -239,7 +242,28 @@ export default function StrategicView() {
                         Strategic Plan Activities
                     </h5>
                     <div className="d-flex gap-2 flex-wrap align-items-center">
+                        <input
+                            type="search"
+                            className="form-control form-control-sm"
+                            placeholder="Search activities…"
+                            style={{ width: '200px' }}
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            aria-label="Search activities"
+                        />
                         <span className="text-muted small me-1">Filters:</span>
+                        <select
+                            className="form-select form-select-sm"
+                            style={{ width: '180px' }}
+                            value={pillarFilter}
+                            onChange={e => setPillarFilter(e.target.value)}
+                            title="Filter by Pillar"
+                        >
+                            <option value="All Pillars">All Pillars</option>
+                            {Array.from(new Set(activities.map(a => a.pillar).filter(Boolean))).sort().map(p => (
+                                <option key={p} value={p}>{p}</option>
+                            ))}
+                        </select>
                         <select
                             className="form-select form-select-sm"
                             style={{ width: '200px' }}
@@ -292,7 +316,7 @@ export default function StrategicView() {
                                 <th>Strategic Objective</th>
                                 <th>Office/Faculty</th>
                                 <th>Department/Unit</th>
-                                <th>Priority</th>
+
                                 <th>Timeline</th>
                                 <th>Progress</th>
                                 <th>Status</th>
@@ -347,14 +371,7 @@ export default function StrategicView() {
                                                 <span className="badge bg-warning text-dark ms-1" style={{ fontSize: '.65rem' }} title="No department assigned">Needs assignment</span>
                                             )}
                                         </td>
-                                        <td>
-                                            <span
-                                                className="status-badge"
-                                                style={{ ...getPriorityBadge(activity.priority), fontSize: '.7rem' }}
-                                            >
-                                                {activity.priority}
-                                            </span>
-                                        </td>
+
                                         <td style={{ fontSize: '.83rem' }}>{activity.timeline || '-'}</td>
                                         <td style={{ minWidth: '100px' }}>
                                             <div className="progress-bar-custom">
@@ -381,13 +398,24 @@ export default function StrategicView() {
                                             </span>
                                         </td>
                                         <td>
-                                            <button 
-                                                className="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" 
-                                                onClick={(e) => { e.preventDefault(); openViewModal(activity); }}
-                                            >
-                                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>visibility</span>
-                                                View
-                                            </button>
+                                            <div className="d-flex gap-1 justify-content-end">
+                                                <button 
+                                                    className="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" 
+                                                    onClick={(e) => { e.preventDefault(); openViewModal(activity); }}
+                                                    title="View Details"
+                                                >
+                                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>visibility</span>
+                                                    View
+                                                </button>
+                                                <button 
+                                                    className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" 
+                                                    onClick={(e) => { e.preventDefault(); openModal('edit', activity); }}
+                                                    title="Edit Activity"
+                                                >
+                                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>edit</span>
+                                                    Edit
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -445,13 +473,13 @@ export default function StrategicView() {
                                 <div className="row g-4">
                                     <div className="col-12 border-bottom pb-3">
                                         <h4 className="fw-bold mb-1" style={{ color: '#005696' }}>{selectedActivity.title}</h4>
-                                        <span className="badge" style={getPriorityBadge(selectedActivity.priority)}>{selectedActivity.priority} Priority</span>
+
                                         <span className="badge ms-2" style={getStatusBadge(selectedActivity.status)}>{selectedActivity.status}</span>
                                     </div>
                                     
                                     <div className="col-md-6">
                                         <p className="text-muted small fw-bold mb-1 text-uppercase">Strategic Pillar</p>
-                                        <p className="mb-0">{selectedActivity.pillar}</p>
+                                        <p className="mb-0 fw-medium" style={{ color: '#475569' }}>{selectedActivity.pillar || 'N/A'}</p>
                                     </div>
                                     <div className="col-md-6">
                                         <p className="text-muted small fw-bold mb-1 text-uppercase">Strategic Objective</p>
@@ -468,9 +496,48 @@ export default function StrategicView() {
                                         </p>
                                     </div>
                                     <div className="col-md-6">
-                                        <p className="text-muted small fw-bold mb-1 text-uppercase">Target / KPI</p>
-                                        <p className="mb-0" style={{ wordBreak: 'break-word' }}>{linkify(selectedActivity.target_kpi) || 'N/A'}</p>
+                                        <p className="text-muted small fw-bold mb-1 text-uppercase">KPI Target Value</p>
+                                        <p className="mb-0 h5 fw-bold" style={{ color: '#005696' }}>{selectedActivity.kpi_target_value ?? 'N/A'}</p>
                                     </div>
+
+                                    {(selectedActivity.kpi_target_value != null && selectedActivity.kpi_target_value > 0) && (
+                                        <div className="col-12 mt-3">
+                                            <div className="p-3 bg-light rounded border">
+                                                <div className="d-flex justify-content-between align-items-center mb-2">
+                                                    <p className="text-muted small fw-bold mb-0 text-uppercase">KPI Achievement Score</p>
+                                                    <span className="badge" style={{ backgroundColor: '#005696', color: 'white' }}>
+                                                        {Math.round(((selectedActivity.actual_value || 0) / (selectedActivity.kpi_target_value || 1)) * 100)}%
+                                                    </span>
+                                                </div>
+                                                <div className="row align-items-center">
+                                                    <div className="col-md-4">
+                                                        <div className="text-center">
+                                                            <div className="text-muted small">Actual</div>
+                                                            <div className="h5 fw-bold mb-0" style={{ color: '#005696' }}>{selectedActivity.actual_value || 0}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="col-md-4 border-start border-end">
+                                                        <div className="text-center">
+                                                            <div className="text-muted small">Target Goal</div>
+                                                            <div className="h5 fw-bold mb-0" style={{ color: '#64748b' }}>{selectedActivity.kpi_target_value}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="col-md-4">
+                                                        <div className="progress" style={{ height: '10px' }}>
+                                                            <div 
+                                                                className="progress-bar" 
+                                                                role="progressbar" 
+                                                                style={{ 
+                                                                    width: `${Math.min(100, Math.round(((selectedActivity.actual_value || 0) / (selectedActivity.kpi_target_value || 1)) * 100))}%`, 
+                                                                    backgroundColor: '#005696' 
+                                                                }}
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="col-md-6">
                                         <p className="text-muted small fw-bold mb-1 text-uppercase">Timeline</p>
@@ -499,10 +566,7 @@ export default function StrategicView() {
                                 </div>
                             </div>
                             <div className="modal-footer border-0 p-3 pt-0 d-flex justify-content-between">
-                                <button type="button" className="btn btn-light" onClick={() => setShowViewModal(false)}>
-                                    <span className="material-symbols-outlined align-middle me-1" style={{ fontSize: '18px' }}>close</span>
-                                    Close
-                                </button>
+
                                 <div className="d-flex gap-2">
                                     <button 
                                         type="button" 

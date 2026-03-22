@@ -10,19 +10,31 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const user = await query({
+    const userRows = await query({
       query: 'SELECT id, full_name, email, role, department_id, status FROM users WHERE id = ?',
       values: [id]
     });
 
-    if (!(user as any[]).length) {
+    if (!(userRows as any[]).length) {
       return NextResponse.json(
         { message: 'User not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json((user as any[])[0]);
+    const user = (userRows as any[])[0];
+    let committees: string[] = [];
+    try {
+      const rows = (await query({
+        query: 'SELECT committee_type FROM user_committee_assignments WHERE user_id = ? ORDER BY committee_type',
+        values: [id]
+      })) as any[];
+      committees = (rows || []).map((r: any) => r.committee_type).filter(Boolean);
+    } catch {
+      // table may not exist
+    }
+
+    return NextResponse.json({ ...user, committees });
   } catch (error) {
     console.error('Error fetching user:', error);
     return NextResponse.json(
@@ -49,7 +61,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { full_name, email, role, department_id, status } = body;
+    const { full_name, email, role, department_id, status, committee_types } = body;
 
     if (!full_name?.trim() || !email?.trim() || !role) {
       return NextResponse.json(
@@ -71,6 +83,28 @@ export async function PUT(
         query: 'UPDATE users SET full_name = ?, email = ?, role = ?, department_id = ? WHERE id = ?',
         values: [full_name.trim(), email.trim(), roleStr, departmentId, id]
       });
+    }
+
+    // Sync committee assignments when provided
+    if (Array.isArray(committee_types)) {
+      try {
+        await query({
+          query: 'DELETE FROM user_committee_assignments WHERE user_id = ?',
+          values: [id]
+        });
+        const { isCommitteeType } = await import('@/lib/committee-types');
+        const valid = committee_types
+          .map((c: unknown) => (typeof c === 'string' ? c.trim() : ''))
+          .filter((c: string) => c && isCommitteeType(c));
+        for (const ct of valid) {
+          await query({
+            query: 'INSERT INTO user_committee_assignments (user_id, committee_type) VALUES (?, ?)',
+            values: [id, ct]
+          });
+        }
+      } catch (e: any) {
+        if (e?.code !== 'ER_NO_SUCH_TABLE') console.error('user_committee_assignments update:', e);
+      }
     }
 
     return NextResponse.json({ message: 'User updated successfully' });

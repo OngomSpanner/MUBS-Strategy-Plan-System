@@ -8,10 +8,10 @@ export async function GET() {
     try {
         // 1. Create sub-activities for activity ID 1 (Faculty of Computing)
         const subTasks = [
-            { title: 'Server Room Cabling', priority: 'High', status: 'In Progress', progress: 45 },
-            { title: 'Network Switch Configuration', priority: 'Medium', status: 'Not Started', progress: 0 },
-            { title: 'UPS Installation', priority: 'Low', status: 'Completed', progress: 100 },
-            { title: 'Fiber Link Termination', priority: 'High', status: 'Delayed', progress: 10 }
+            { title: 'Server Room Cabling', status: 'In Progress', progress: 45 },
+            { title: 'Network Switch Configuration', status: 'Not Started', progress: 0 },
+            { title: 'UPS Installation', status: 'Completed', progress: 100 },
+            { title: 'Fiber Link Termination', status: 'Delayed', progress: 10 }
         ];
 
         const assignees = [17, 18, 19];
@@ -23,13 +23,12 @@ export async function GET() {
             await query({
                 query: `
                     INSERT INTO strategic_activities 
-                    (title, pillar, department_id, status, priority, parent_id, progress, assigned_to, description, start_date, end_date) 
-                    VALUES (?, 'Human Capital & Sustainability', 1, ?, ?, 1, ?, ?, ?, DATE_SUB(CURDATE(), INTERVAL 7 DAY), DATE_ADD(CURDATE(), INTERVAL 14 DAY))
+                    (title, pillar, department_id, status, parent_id, progress, assigned_to, description, start_date, end_date) 
+                    VALUES (?, 'Human Capital & Sustainability', 1, ?, 1, ?, ?, ?, DATE_SUB(CURDATE(), INTERVAL 7 DAY), DATE_ADD(CURDATE(), INTERVAL 14 DAY))
                 `,
                 values: [
                     task.title,
                     task.status,
-                    task.priority,
                     task.progress,
                     assigneeId,
                     `Detailed task for ${task.title}`

@@ -4,15 +4,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 
+const HISTORY_KEY = 'principal-report-history';
+const MAX_HISTORY = 10;
+
 type ReportType = 'executive' | 'department' | 'staff' | 'risk';
 type ApiReportType = 'activity-summary' | 'staff-evaluation' | 'delayed-activities';
 type ExportFormat = 'PDF' | 'Excel';
+type PeriodPreset = 'this_month' | 'last_month' | 'this_quarter' | 'last_quarter' | 'ytd' | 'last_year' | 'custom';
 
 interface ReportHistoryItem {
     id: string;
     reportType: ReportType;
     title: string;
     subtitle: string;
+    scopeLabel: string;
     generatedAt: string;
     format: ExportFormat;
     params: { from?: string; to?: string; department?: string };
@@ -32,6 +37,13 @@ const REPORT_TITLES: Record<ReportType, string> = {
     risk: 'Risk & Delayed Activities',
 };
 
+const REPORT_DESCRIPTIONS: Record<ReportType, string> = {
+    executive: 'Institutional overview for council or board — KPIs and compliance.',
+    department: 'Per-department breakdown and comparison for internal review.',
+    staff: 'Individual and departmental evaluation scores and completion rates.',
+    risk: 'Overdue activities, escalation and risk mitigation status.',
+};
+
 const REPORT_API_TYPE: Record<ReportType, ApiReportType> = {
     executive: 'activity-summary',
     department: 'activity-summary',
@@ -44,6 +56,64 @@ const getScore = (progress: number) =>
 
 const getEvaluation = (rate: number) =>
     rate >= 80 ? 'Excellent' : rate >= 60 ? 'Good' : rate >= 40 ? 'Fair' : 'Poor';
+
+function getPeriodDatesFromPreset(preset: PeriodPreset, customFrom?: string, customTo?: string): { from?: string; to?: string; label: string } {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const firstOfMonth = (year: number, month: number) => {
+        const d = new Date(year, month, 1);
+        return d.toISOString().slice(0, 10);
+    };
+    const lastOfMonth = (year: number, month: number) => {
+        const d = new Date(year, month + 1, 0);
+        return d.toISOString().slice(0, 10);
+    };
+    if (preset === 'custom' && customFrom && customTo) {
+        return { from: customFrom, to: customTo, label: `Custom (${customFrom} – ${customTo})` };
+    }
+    switch (preset) {
+        case 'this_month': {
+            const from = firstOfMonth(y, m), to = lastOfMonth(y, m);
+            return { from, to, label: `${now.toLocaleString('en-GB', { month: 'short' })} ${y}` };
+        }
+        case 'last_month': {
+            const from = firstOfMonth(y, m - 1), to = lastOfMonth(y, m - 1);
+            const last = new Date(y, m - 1);
+            return { from, to, label: `${last.toLocaleString('en-GB', { month: 'short' })} ${y}` };
+        }
+        case 'this_quarter': {
+            const q = Math.floor(m / 3) + 1;
+            const startM = (q - 1) * 3;
+            const from = firstOfMonth(y, startM), to = lastOfMonth(y, startM + 2);
+            return { from, to, label: `Q${q} ${y}` };
+        }
+        case 'last_quarter': {
+            const q = Math.floor(m / 3) + 1;
+            const prevQ = q === 1 ? 4 : q - 1;
+            const prevY = q === 1 ? y - 1 : y;
+            const startM = (prevQ - 1) * 3;
+            const from = firstOfMonth(prevY, startM), to = lastOfMonth(prevY, startM + 2);
+            return { from, to, label: `Q${prevQ} ${prevY}` };
+        }
+        case 'ytd':
+            return { from: `${y}-01-01`, to: lastOfMonth(y, m), label: `YTD ${y}` };
+        case 'last_year':
+            return { from: `${y - 1}-01-01`, to: `${y - 1}-12-31`, label: `Annual ${y - 1}` };
+        default:
+            return { label: 'All data' };
+    }
+}
+
+const PERIOD_PRESET_OPTIONS: { value: PeriodPreset; label: string }[] = [
+    { value: 'this_quarter', label: 'This quarter' },
+    { value: 'last_quarter', label: 'Last quarter' },
+    { value: 'this_month', label: 'This month' },
+    { value: 'last_month', label: 'Last month' },
+    { value: 'ytd', label: 'Year to date' },
+    { value: 'last_year', label: 'Last year' },
+    { value: 'custom', label: 'Custom range' },
+];
 
 function useReportFetch() {
     const [loading, setLoading] = useState<string | null>(null);
@@ -78,15 +148,23 @@ function useReportFetch() {
 
 export default function PrincipalReports() {
     const [departments, setDepartments] = useState<string[]>([]);
+    const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('this_quarter');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [departmentFilter, setDepartmentFilter] = useState('All Departments');
     const [reportHistory, setReportHistory] = useState<ReportHistoryItem[]>([]);
-    const [quickPeriod, setQuickPeriod] = useState('Q1 2025');
-    const [quickReportType, setQuickReportType] = useState<ReportType>('executive');
-    const [quickFormat, setQuickFormat] = useState<ExportFormat>('PDF');
-    const [generatingQuick, setGeneratingQuick] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+    /* Report builder */
+    const [builderOpen, setBuilderOpen] = useState(false);
+    const [builderStep, setBuilderStep] = useState<1 | 2 | 3>(1);
+    const [builderType, setBuilderType] = useState<ReportType | null>(null);
+    const [builderPeriod, setBuilderPeriod] = useState<PeriodPreset>('this_quarter');
+    const [builderCustomFrom, setBuilderCustomFrom] = useState('');
+    const [builderCustomTo, setBuilderCustomTo] = useState('');
+    const [builderDepartment, setBuilderDepartment] = useState('All Departments');
+    const [builderFormat, setBuilderFormat] = useState<ExportFormat>('PDF');
+    const [builderGenerating, setBuilderGenerating] = useState(false);
 
     /* Share by email modal */
     const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -103,40 +181,79 @@ export default function PrincipalReports() {
             .catch(() => setDepartments([]));
     }, []);
 
+    useEffect(() => {
+        try {
+            const raw = typeof window !== 'undefined' ? localStorage.getItem(HISTORY_KEY) : null;
+            const parsed = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                const migrated = parsed.slice(0, MAX_HISTORY).map((item: ReportHistoryItem) => ({
+                    ...item,
+                    scopeLabel: item.scopeLabel ?? (item.params ? `${(item.params.from && item.params.to) ? `${item.params.from} – ${item.params.to}` : 'All'} · ${item.params.department || 'All'}` : '—'),
+                }));
+                setReportHistory(migrated);
+            }
+        } catch {
+            setReportHistory([]);
+        }
+    }, []);
+
+    const persistHistory = useCallback((next: ReportHistoryItem[]) => {
+        setReportHistory(next);
+        try {
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(next.slice(0, MAX_HISTORY)));
+            }
+        } catch {}
+    }, []);
+
     const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3000);
     }, []);
 
-    const getPeriodDates = useCallback((period: string): { from?: string; to?: string } => {
-        const now = new Date();
-        const y = now.getFullYear();
-        switch (period) {
-            case 'Q1 2025': return { from: '2025-01-01', to: '2025-03-31' };
-            case 'Q2 2025': return { from: '2025-04-01', to: '2025-06-30' };
-            case 'Q3 2025': return { from: '2025-07-01', to: '2025-09-30' };
-            case 'Q4 2025': return { from: '2025-10-01', to: '2025-12-31' };
-            case 'Annual 2024': return { from: '2024-01-01', to: '2024-12-31' };
-            default: return {};
-        }
-    }, []);
+    const getParamsFromFilters = useCallback((): { from?: string; to?: string; department?: string } => {
+        const { from, to } = getPeriodDatesFromPreset(periodPreset, dateFrom, dateTo);
+        return {
+            from,
+            to,
+            department: departmentFilter !== 'All Departments' ? departmentFilter : undefined,
+        };
+    }, [periodPreset, dateFrom, dateTo, departmentFilter]);
+
+    const getBuilderParams = useCallback((): { from?: string; to?: string; department?: string } => {
+        const { from, to } = getPeriodDatesFromPreset(builderPeriod, builderCustomFrom, builderCustomTo);
+        return {
+            from,
+            to,
+            department: builderDepartment !== 'All Departments' ? builderDepartment : undefined,
+        };
+    }, [builderPeriod, builderCustomFrom, builderCustomTo, builderDepartment]);
 
     const addToHistory = useCallback((
         reportType: ReportType,
         title: string,
         subtitle: string,
+        scopeLabel: string,
         format: ExportFormat,
         params: { from?: string; to?: string; department?: string }
     ) => {
-        setReportHistory(prev => [{
+        const item: ReportHistoryItem = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
             reportType,
             title,
             subtitle,
+            scopeLabel,
             generatedAt: new Date().toISOString(),
             format,
             params,
-        }, ...prev]);
+        };
+        setReportHistory(prev => {
+            const next = [item, ...prev].slice(0, MAX_HISTORY);
+            try {
+                if (typeof window !== 'undefined') localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+            } catch {}
+            return next;
+        });
     }, []);
 
     const exportExcel = useCallback(async (
@@ -192,7 +309,12 @@ export default function PrincipalReports() {
                 XLSX.utils.book_append_sheet(wb, ws, 'Report');
                 XLSX.writeFile(wb, `${title.replace(/\s+/g, '_')}.xlsx`);
             }
-            if (!skipHistory) addToHistory(reportType, title, subtitle, 'Excel', params);
+            if (!skipHistory) {
+                const periodInfo = getPeriodDatesFromPreset('custom', params.from, params.to);
+                const periodLabel = params.from && params.to ? `${params.from} – ${params.to}` : 'All data';
+                const deptLabel = params.department || 'All';
+                addToHistory(reportType, title, subtitle, `${periodLabel} · ${deptLabel}`, 'Excel', params);
+            }
             showToast('Report downloaded.');
         } catch {
             showToast('Failed to generate report.', 'error');
@@ -270,19 +392,68 @@ export default function PrincipalReports() {
                 });
             }
             doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
-            if (!skipHistory) addToHistory(reportType, title, subtitle, 'PDF', params);
+            if (!skipHistory) {
+                const periodLabel = params.from && params.to ? `${params.from} – ${params.to}` : 'All data';
+                const deptLabel = params.department || 'All';
+                addToHistory(reportType, title, subtitle, `${periodLabel} · ${deptLabel}`, 'PDF', params);
+            }
             showToast('Report downloaded.');
         } catch {
             showToast('Failed to generate report.', 'error');
         }
     }, [fetchReport, addToHistory, showToast]);
 
-    const params = { from: dateFrom || undefined, to: dateTo || undefined, department: departmentFilter };
+    const params = getParamsFromFilters();
     const isCardLoading = (key: ReportType) => loading !== null && loading.startsWith(REPORT_API_TYPE[key]);
+
+    const openBuilder = useCallback((prefill?: { type?: ReportType; period?: PeriodPreset; department?: string }) => {
+        setBuilderStep(1);
+        setBuilderType(prefill?.type ?? null);
+        setBuilderPeriod(prefill?.period ?? 'this_quarter');
+        setBuilderDepartment(prefill?.department ?? departmentFilter);
+        setBuilderFormat('PDF');
+        setBuilderCustomFrom(dateFrom);
+        setBuilderCustomTo(dateTo);
+        setBuilderOpen(true);
+    }, [departmentFilter, dateFrom, dateTo]);
+
+    const handleBuilderGenerate = useCallback(async () => {
+        if (builderType == null) return;
+        const p = getBuilderParams();
+        const { label: periodLabel } = getPeriodDatesFromPreset(builderPeriod, builderCustomFrom, builderCustomTo);
+        const title = REPORT_TITLES[builderType];
+        const subtitle = builderDepartment !== 'All Departments' ? builderDepartment : (p.from && p.to ? `${p.from} – ${p.to}` : periodLabel);
+        const scopeLabel = `${periodLabel} · ${builderDepartment !== 'All Departments' ? builderDepartment : 'All'}`;
+        setBuilderGenerating(true);
+        try {
+            if (builderFormat === 'PDF') {
+                await exportPDF(builderType, p, title, subtitle, false);
+            } else {
+                await exportExcel(builderType, p, title, subtitle, false);
+            }
+            setBuilderOpen(false);
+        } finally {
+            setBuilderGenerating(false);
+        }
+    }, [builderType, builderPeriod, builderCustomFrom, builderCustomTo, builderDepartment, builderFormat, getBuilderParams, exportPDF, exportExcel]);
+
+    const handleBuilderEmail = useCallback(() => {
+        if (builderType == null) return;
+        const p = getBuilderParams();
+        const title = REPORT_TITLES[builderType];
+        const { label: periodLabel } = getPeriodDatesFromPreset(builderPeriod, builderCustomFrom, builderCustomTo);
+        const subtitle = builderDepartment !== 'All Departments' ? builderDepartment : periodLabel;
+        setShareContext({ reportType: builderType, title, subtitle, params: p });
+        setShareToEmail('');
+        setShareFormat(builderFormat);
+        setBuilderOpen(false);
+        setShareModalOpen(true);
+    }, [builderType, builderPeriod, builderCustomFrom, builderCustomTo, builderDepartment, builderFormat, getBuilderParams]);
 
     const handleCardExport = (reportType: ReportType, format: ExportFormat) => {
         const title = REPORT_TITLES[reportType];
-        const subtitle = departmentFilter !== 'All Departments' ? departmentFilter : (dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : 'All departments');
+        const { label: periodLabel } = getPeriodDatesFromPreset(periodPreset, dateFrom, dateTo);
+        const subtitle = departmentFilter !== 'All Departments' ? departmentFilter : periodLabel;
         if (format === 'PDF') {
             exportPDF(reportType, params, title, subtitle);
         } else {
@@ -292,7 +463,8 @@ export default function PrincipalReports() {
 
     const openShareModal = (reportType: ReportType) => {
         const title = REPORT_TITLES[reportType];
-        const subtitle = departmentFilter !== 'All Departments' ? departmentFilter : (dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : 'All departments');
+        const { label: periodLabel } = getPeriodDatesFromPreset(periodPreset, dateFrom, dateTo);
+        const subtitle = departmentFilter !== 'All Departments' ? departmentFilter : periodLabel;
         setShareContext({ reportType, title, subtitle, params });
         setShareToEmail('');
         setShareFormat('PDF');
@@ -457,35 +629,21 @@ export default function PrincipalReports() {
         }
     }, [shareContext, shareToEmail, shareFormat, generateReportBase64, showToast]);
 
-    const handleQuickGenerate = async () => {
-        setGeneratingQuick(true);
-        const { from, to } = getPeriodDates(quickPeriod);
-        const p = { from, to, department: departmentFilter };
-        const title = `${REPORT_TITLES[quickReportType]} — ${quickPeriod}`;
-        const subtitle = departmentFilter !== 'All Departments' ? departmentFilter : (from && to ? `${from} – ${to}` : 'All data');
-        try {
-            if (quickFormat === 'PDF') {
-                await exportPDF(quickReportType, p, title, subtitle);
-            } else {
-                await exportExcel(quickReportType, p, title, subtitle);
-            }
-        } finally {
-            setGeneratingQuick(false);
-        }
-    };
-
     const handleRedownload = async (item: ReportHistoryItem) => {
-        const title = item.title;
-        const subtitle = item.subtitle;
         try {
             if (item.format === 'PDF') {
-                await exportPDF(item.reportType, item.params, title, subtitle, true);
+                await exportPDF(item.reportType, item.params, item.title, item.subtitle, true);
             } else {
-                await exportExcel(item.reportType, item.params, title, subtitle, true);
+                await exportExcel(item.reportType, item.params, item.title, item.subtitle, true);
             }
         } catch {
             showToast('Failed to re-download report.', 'error');
         }
+    };
+
+    const clearHistory = () => {
+        persistHistory([]);
+        showToast('History cleared.');
     };
 
     const formatGeneratedAt = (iso: string) => {
@@ -495,20 +653,45 @@ export default function PrincipalReports() {
 
     return (
         <div id="page-reports" className="page-section active-page">
-            {/* Optional filters */}
+            {/* Header + primary CTA */}
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+                <div>
+                    <h5 className="mb-1 d-flex align-items-center gap-2" style={{ fontSize: '1.1rem', fontWeight: 800 }}>
+                        <span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)' }}>summarize</span>
+                        Reports &amp; exports
+                    </h5>
+                    <p className="text-muted small mb-0">Generate and share institutional, department, staff and risk reports. Use filters below or open the report builder.</p>
+                </div>
+                <button type="button" className="btn btn-primary fw-bold d-flex align-items-center gap-2" style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }} onClick={() => openBuilder()}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>add_circle</span>
+                    Create report
+                </button>
+            </div>
+
+            {/* Filter bar */}
             <div className="table-card mb-4 p-3">
                 <div className="row g-3 align-items-end">
                     <div className="col-md-2">
-                        <label className="form-label small fw-bold mb-1">From</label>
-                        <input type="date" className="form-control form-control-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                        <label className="form-label small fw-bold mb-1">Period</label>
+                        <select className="form-select form-control-sm" value={periodPreset} onChange={e => setPeriodPreset(e.target.value as PeriodPreset)}>
+                            {PERIOD_PRESET_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
                     </div>
-                    <div className="col-md-2">
-                        <label className="form-label small fw-bold mb-1">To</label>
-                        <input type="date" className="form-control form-control-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-                    </div>
+                    {periodPreset === 'custom' && (
+                        <>
+                            <div className="col-md-2">
+                                <label className="form-label small fw-bold mb-1">From</label>
+                                <input type="date" className="form-control form-control-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                                <label className="form-label small fw-bold mb-1">To</label>
+                                <input type="date" className="form-control form-control-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+                            </div>
+                        </>
+                    )}
                     <div className="col-md-3">
                         <label className="form-label small fw-bold mb-1">Department</label>
-                        <select className="form-select form-select-sm" value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)}>
+                        <select className="form-select form-control-sm" value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)}>
                             <option>All Departments</option>
                             {departments.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
@@ -516,217 +699,205 @@ export default function PrincipalReports() {
                 </div>
             </div>
 
-            {/* Report type cards */}
-            <div className="row g-4 mb-4">
-                <div className="col-12 col-md-6 col-xl-3">
-                    <div className="report-card" style={{ borderTopColor: 'var(--mubs-blue)' }}>
-                        <div className="report-card-icon" style={{ background: '#eff6ff' }}>
-                            <span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)', fontSize: '26px' }}>summarize</span>
-                        </div>
-                        <h6>Executive Summary</h6>
-                        <p>Full institutional progress overview with KPIs, compliance rates, and risk highlights.</p>
-                        <div className="d-flex gap-2 flex-wrap">
-                            <button className="btn btn-sm btn-primary fw-bold flex-fill" style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }} disabled={!!loading} onClick={() => handleCardExport('executive', 'PDF')}>
-                                {isCardLoading('executive') ? <span className="spinner-border spinner-border-sm" /> : <><span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>picture_as_pdf</span>PDF</>}
-                            </button>
-                            <button className="btn btn-sm btn-outline-success fw-bold flex-fill" disabled={!!loading} onClick={() => handleCardExport('executive', 'Excel')}>
-                                <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>table_chart</span>Excel
-                            </button>
-                        </div>
-                        <button type="button" className="btn btn-sm btn-outline-secondary w-100 mt-2" onClick={() => openShareModal('executive')}>
-                            <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>share</span>Share Summary
-                        </button>
-                    </div>
-                </div>
-                <div className="col-12 col-md-6 col-xl-3">
-                    <div className="report-card" style={{ borderTopColor: '#10b981' }}>
-                        <div className="report-card-icon" style={{ background: '#ecfdf5' }}>
-                            <span className="material-symbols-outlined" style={{ color: '#059669', fontSize: '26px' }}>corporate_fare</span>
-                        </div>
-                        <h6>Department Performance Report</h6>
-                        <p>Per-department activity completion rates, compliance scores, and comparative analysis across departments.</p>
-                        <div className="d-flex gap-2 flex-wrap">
-                            <button className="btn btn-sm btn-success fw-bold flex-fill" disabled={!!loading} onClick={() => handleCardExport('department', 'PDF')}>
-                                <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>picture_as_pdf</span>PDF
-                            </button>
-                            <button className="btn btn-sm btn-outline-success fw-bold flex-fill" disabled={!!loading} onClick={() => handleCardExport('department', 'Excel')}>
-                                <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>table_chart</span>Excel
-                            </button>
-                        </div>
-                        <button type="button" className="btn btn-sm btn-outline-secondary w-100 mt-2" onClick={() => openShareModal('department')}>
-                            <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>share</span>Share Summary
-                        </button>
-                    </div>
-                </div>
-
-                <div className="col-12 col-md-6 col-xl-3">
-                    <div className="report-card" style={{ borderTopColor: 'var(--mubs-yellow)' }}>
-                        <div className="report-card-icon" style={{ background: '#fffbeb' }}>
-                            <span className="material-symbols-outlined" style={{ color: '#b45309', fontSize: '26px' }}>person_search</span>
-                        </div>
-                        <h6>Staff Evaluation Report</h6>
-                        <p>Individual and departmental evaluation scores, completion rates, and performance trends.</p>
-                        <div className="d-flex gap-2 flex-wrap">
-                            <button className="btn btn-sm fw-bold flex-fill text-dark" style={{ background: 'var(--mubs-yellow)', borderColor: 'var(--mubs-yellow)' }} disabled={!!loading} onClick={() => handleCardExport('staff', 'PDF')}>
-                                <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>picture_as_pdf</span>PDF
-                            </button>
-                            <button className="btn btn-sm btn-outline-success fw-bold flex-fill" disabled={!!loading} onClick={() => handleCardExport('staff', 'Excel')}>
-                                <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>table_chart</span>Excel
-                            </button>
-                        </div>
-                        <button type="button" className="btn btn-sm btn-outline-secondary w-100 mt-2" onClick={() => openShareModal('staff')}>
-                            <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>share</span>Share Summary
-                        </button>
-                    </div>
-                </div>
-
-                <div className="col-12 col-md-6 col-xl-3">
-                    <div className="report-card" style={{ borderTopColor: 'var(--mubs-red)' }}>
-                        <div className="report-card-icon" style={{ background: '#fff1f2' }}>
-                            <span className="material-symbols-outlined" style={{ color: 'var(--mubs-red)', fontSize: '26px' }}>crisis_alert</span>
-                        </div>
-                        <h6>Risk &amp; Delayed Activities</h6>
-                        <p>Comprehensive view of all overdue activities, escalation logs, and risk mitigation status.</p>
-                        <div className="d-flex gap-2 flex-wrap">
-                            <button className="btn btn-sm btn-danger fw-bold flex-fill" disabled={!!loading} onClick={() => handleCardExport('risk', 'PDF')}>
-                                <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>picture_as_pdf</span>PDF
-                            </button>
-                            <button className="btn btn-sm btn-outline-danger fw-bold flex-fill" disabled={!!loading} onClick={() => handleCardExport('risk', 'Excel')}>
-                                <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>table_chart</span>Excel
-                            </button>
-                        </div>
-                        <button type="button" className="btn btn-sm btn-outline-secondary w-100 mt-2" onClick={() => openShareModal('risk')}>
-                            <span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>share</span>Share Summary
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Recent reports generated */}
-            <div className="row g-4">
-                <div className="col-12 col-lg-7">
-                    <div className="table-card">
-                        <div className="table-card-header">
-                            <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>history</span>Recently Generated Reports</h5>
-                            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setReportHistory([])}>Clear History</button>
-                        </div>
-                        <div className="table-responsive">
-                            <table className="table mb-0">
-                                <thead><tr><th>Report</th><th>Generated</th><th>Format</th><th>Actions</th></tr></thead>
-                                <tbody>
-                                    {reportHistory.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={4} className="text-center py-4 text-muted">No reports generated yet. Use the cards above or Quick Generate.</td>
-                                        </tr>
-                                    ) : reportHistory.map(item => (
-                                        <tr key={item.id}>
-                                            <td>
-                                                <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>{item.title}</div>
-                                                <div className="text-muted" style={{ fontSize: '.72rem' }}>{item.subtitle}</div>
-                                            </td>
-                                            <td style={{ fontSize: '.83rem' }}>{formatGeneratedAt(item.generatedAt)}</td>
-                                            <td><span className={`badge ${item.format === 'PDF' ? 'bg-danger' : 'bg-success'}`}>{item.format}</span></td>
-                                            <td>
-                                                <div className="d-flex gap-1">
-                                                    <button type="button" className="btn btn-xs btn-outline-success py-0 px-2" style={{ fontSize: '.75rem' }} title="Download" onClick={() => handleRedownload(item)}>
-                                                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>download</span>
-                                                    </button>
-                                                    <button type="button" className="btn btn-xs btn-outline-secondary py-0 px-2" style={{ fontSize: '.75rem' }} title="Share" onClick={() => openShareModalFromItem(item)}>
-                                                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>share</span>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="table-card-footer">
-                            <span className="footer-label">{reportHistory.length} report{reportHistory.length !== 1 ? 's' : ''} in history</span>
-                            {reportHistory.length > 0 && (
-                                <button type="button" className="btn btn-sm btn-primary fw-bold" style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }} onClick={() => handleRedownload(reportHistory[0])}>
-                                    <span className="material-symbols-outlined me-1" style={{ fontSize: '16px' }}>download</span>Download Latest
+            {/* Report type cards as shortcuts */}
+            <div className="row g-3 mb-4">
+                {(['executive', 'department', 'staff', 'risk'] as ReportType[]).map(type => (
+                    <div key={type} className="col-12 col-sm-6 col-xl-3">
+                        <div className="report-card h-100" style={{ borderTopColor: type === 'executive' ? 'var(--mubs-blue)' : type === 'department' ? '#10b981' : type === 'staff' ? 'var(--mubs-yellow)' : 'var(--mubs-red)' }}>
+                            <div className="report-card-icon" style={{ background: type === 'executive' ? '#eff6ff' : type === 'department' ? '#ecfdf5' : type === 'staff' ? '#fffbeb' : '#fff1f2' }}>
+                                <span className="material-symbols-outlined" style={{ color: type === 'executive' ? 'var(--mubs-blue)' : type === 'department' ? '#059669' : type === 'staff' ? '#b45309' : 'var(--mubs-red)', fontSize: '26px' }}>
+                                    {type === 'executive' ? 'summarize' : type === 'department' ? 'corporate_fare' : type === 'staff' ? 'person_search' : 'crisis_alert'}
+                                </span>
+                            </div>
+                            <h6>{REPORT_TITLES[type]}</h6>
+                            <p className="small mb-2">{REPORT_DESCRIPTIONS[type]}</p>
+                            <div className="d-flex gap-2 flex-wrap">
+                                <button className="btn btn-sm btn-outline-primary flex-fill" disabled={!!loading} onClick={() => openBuilder({ type })}>
+                                    Build report
                                 </button>
-                            )}
+                                <button className="btn btn-sm btn-outline-success py-1" disabled={!!loading} onClick={() => handleCardExport(type, 'PDF')} title="Download PDF">
+                                    {isCardLoading(type) ? <span className="spinner-border spinner-border-sm" /> : <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>picture_as_pdf</span>}
+                                </button>
+                                <button className="btn btn-sm btn-outline-success py-1" disabled={!!loading} onClick={() => handleCardExport(type, 'Excel')} title="Download Excel">
+                                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>table_chart</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
+                ))}
+            </div>
 
-                <div className="col-12 col-lg-5 d-flex flex-column gap-4">
-                    <div className="table-card">
-                        <div className="table-card-header">
-                            <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>schedule_send</span>Scheduled Reports</h5>
-                            <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => showToast('Scheduling coming soon.')}>+ Schedule</button>
-                        </div>
-                        <div className="p-3 d-flex flex-column gap-2">
-                            <div className="d-flex align-items-center gap-3 p-2 rounded" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                <span className="material-symbols-outlined" style={{ color: '#059669', fontSize: '20px' }}>event_repeat</span>
-                                <div className="flex-fill">
-                                    <div style={{ fontSize: '.83rem', fontWeight: 700, color: '#0f172a' }}>Monthly Executive Summary</div>
-                                    <div style={{ fontSize: '.72rem', color: '#64748b' }}>Every 1st of month · PDF · Email</div>
-                                </div>
-                                <span className="status-badge" style={{ background: '#dcfce7', color: '#15803d', fontSize: '.62rem' }}>Active</span>
-                            </div>
-                            <div className="d-flex align-items-center gap-3 p-2 rounded" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                <span className="material-symbols-outlined" style={{ color: '#b45309', fontSize: '20px' }}>event_repeat</span>
-                                <div className="flex-fill">
-                                    <div style={{ fontSize: '.83rem', fontWeight: 700, color: '#0f172a' }}>Quarterly Risk Report</div>
-                                    <div style={{ fontSize: '.72rem', color: '#64748b' }}>End of each quarter · PDF</div>
-                                </div>
-                                <span className="status-badge" style={{ background: '#dcfce7', color: '#15803d', fontSize: '.62rem' }}>Active</span>
-                            </div>
-                            <div className="d-flex align-items-center gap-3 p-2 rounded" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                <span className="material-symbols-outlined" style={{ color: '#94a3b8', fontSize: '20px' }}>event_repeat</span>
-                                <div className="flex-fill">
-                                    <div style={{ fontSize: '.83rem', fontWeight: 700, color: '#0f172a' }}>Annual Staff Evaluation</div>
-                                    <div style={{ fontSize: '.72rem', color: '#64748b' }}>Dec 31 · Excel · Board Package</div>
-                                </div>
-                                <span className="status-badge" style={{ background: '#fef9c3', color: '#a16207', fontSize: '.62rem' }}>Upcoming</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="table-card">
-                        <div className="table-card-header">
-                            <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>bolt</span>Quick Generate</h5>
-                        </div>
-                        <div className="p-3 d-flex flex-column gap-2">
-                            <div className="row g-2">
-                                <div className="col-6">
-                                    <select className="form-select form-select-sm" value={quickPeriod} onChange={e => setQuickPeriod(e.target.value)}>
-                                        <option>Q1 2025</option>
-                                        <option>Q2 2025</option>
-                                        <option>Q3 2025</option>
-                                        <option>Q4 2025</option>
-                                        <option>Annual 2024</option>
-                                    </select>
-                                </div>
-                                <div className="col-6">
-                                    <select className="form-select form-select-sm" value={quickReportType} onChange={e => setQuickReportType(e.target.value as ReportType)}>
-                                        <option value="executive">Executive Summary</option>
-                                        <option value="department">Department Performance</option>
-                                        <option value="staff">Staff Evaluation</option>
-                                        <option value="risk">Risk Report</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="row g-2">
-                                <div className="col-6">
-                                    <select className="form-select form-select-sm" value={quickFormat} onChange={e => setQuickFormat(e.target.value as ExportFormat)}>
-                                        <option>PDF</option>
-                                        <option>Excel</option>
-                                    </select>
-                                </div>
-                                <div className="col-6">
-                                    <button type="button" className="btn btn-sm w-100 fw-bold text-white" style={{ background: 'var(--mubs-blue)' }} disabled={generatingQuick} onClick={handleQuickGenerate}>
-                                        {generatingQuick ? <span className="spinner-border spinner-border-sm" /> : <><span className="material-symbols-outlined me-1" style={{ fontSize: '15px' }}>auto_awesome</span>Generate</>}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            {/* Suggested reports */}
+            <div className="table-card mb-4 p-3">
+                <h6 className="mb-3 d-flex align-items-center gap-2" style={{ fontWeight: 700 }}>
+                    <span className="material-symbols-outlined" style={{ color: '#6366f1', fontSize: '20px' }}>lightbulb</span>
+                    Suggested reports
+                </h6>
+                <div className="d-flex flex-wrap gap-2">
+                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => openBuilder({ type: 'executive', period: 'this_quarter' })}>
+                        Executive Summary — This quarter
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => openBuilder({ type: 'risk', period: 'this_month' })}>
+                        Risk report — This month
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline-success" onClick={() => openBuilder({ type: 'department', period: 'last_quarter' })}>
+                        Department performance — Last quarter
+                    </button>
                 </div>
             </div>
+
+            {/* Recent reports */}
+            <div className="table-card">
+                <div className="table-card-header">
+                    <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>history</span>Recent reports</h5>
+                    <button type="button" className="btn btn-sm btn-outline-secondary" onClick={clearHistory}>Clear history</button>
+                </div>
+                <div className="table-responsive">
+                    <table className="table mb-0">
+                        <thead><tr><th>Report</th><th>Scope</th><th>Generated</th><th>Format</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            {reportHistory.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="text-center py-5 text-muted">
+                                        No reports generated yet. Click &quot;Create report&quot; or use a report card above.
+                                    </td>
+                                </tr>
+                            ) : reportHistory.map(item => (
+                                <tr key={item.id}>
+                                    <td>
+                                        <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>{item.title}</div>
+                                        <div className="text-muted" style={{ fontSize: '.72rem' }}>{item.subtitle}</div>
+                                    </td>
+                                    <td style={{ fontSize: '.8rem' }}>{item.scopeLabel ?? '—'}</td>
+                                    <td style={{ fontSize: '.83rem' }}>{formatGeneratedAt(item.generatedAt)}</td>
+                                    <td><span className={`badge ${item.format === 'PDF' ? 'bg-danger' : 'bg-success'}`}>{item.format}</span></td>
+                                    <td>
+                                        <div className="d-flex gap-1">
+                                            <button type="button" className="btn btn-sm btn-outline-success py-0 px-2" title="Download" onClick={() => handleRedownload(item)}>
+                                                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>download</span>
+                                            </button>
+                                            <button type="button" className="btn btn-sm btn-outline-secondary py-0 px-2" title="Share" onClick={() => openShareModalFromItem(item)}>
+                                                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>share</span>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <div className="table-card-footer">
+                    <span className="footer-label">{reportHistory.length} report{reportHistory.length !== 1 ? 's' : ''} in history</span>
+                    {reportHistory.length > 0 && (
+                        <button type="button" className="btn btn-sm btn-primary fw-bold" style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }} onClick={() => handleRedownload(reportHistory[0])}>
+                            <span className="material-symbols-outlined me-1" style={{ fontSize: '16px' }}>download</span>Download latest
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Report builder modal */}
+            {builderOpen && (
+                <div className="modal show d-block" style={{ background: 'rgba(0,0,0,0.5)' }} tabIndex={-1}>
+                    <div className="modal-dialog modal-dialog-centered modal-lg">
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <h5 className="modal-title d-flex align-items-center gap-2">
+                                    <span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)' }}>tune</span>
+                                    Create report {builderStep === 1 ? '— Choose type' : builderStep === 2 ? '— Period & scope' : '— Format & generate'}
+                                </h5>
+                                <button type="button" className="btn-close" onClick={() => setBuilderOpen(false)} aria-label="Close" />
+                            </div>
+                            <div className="modal-body">
+                                {builderStep === 1 && (
+                                    <div className="row g-3">
+                                        {(['executive', 'department', 'staff', 'risk'] as ReportType[]).map(type => (
+                                            <div key={type} className="col-6">
+                                                <button
+                                                    type="button"
+                                                    className={`btn w-100 p-3 text-start border rounded-3 ${builderType === type ? 'border-primary bg-primary bg-opacity-10' : 'border-secondary'}`}
+                                                    onClick={() => { setBuilderType(type); setBuilderStep(2); }}
+                                                >
+                                                    <span className="material-symbols-outlined me-2" style={{ verticalAlign: 'middle' }}>
+                                                        {type === 'executive' ? 'summarize' : type === 'department' ? 'corporate_fare' : type === 'staff' ? 'person_search' : 'crisis_alert'}
+                                                    </span>
+                                                    <strong>{REPORT_TITLES[type]}</strong>
+                                                    <div className="small text-muted mt-1">{REPORT_DESCRIPTIONS[type]}</div>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {builderStep === 2 && builderType != null && (
+                                    <div className="d-flex flex-column gap-3">
+                                        <div className="row g-2">
+                                            <div className="col-md-6">
+                                                <label className="form-label small fw-bold">Period</label>
+                                                <select className="form-select" value={builderPeriod} onChange={e => setBuilderPeriod(e.target.value as PeriodPreset)}>
+                                                    {PERIOD_PRESET_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                </select>
+                                            </div>
+                                            {builderPeriod === 'custom' && (
+                                                <>
+                                                    <div className="col-md-3">
+                                                        <label className="form-label small fw-bold">From</label>
+                                                        <input type="date" className="form-control" value={builderCustomFrom} onChange={e => setBuilderCustomFrom(e.target.value)} />
+                                                    </div>
+                                                    <div className="col-md-3">
+                                                        <label className="form-label small fw-bold">To</label>
+                                                        <input type="date" className="form-control" value={builderCustomTo} onChange={e => setBuilderCustomTo(e.target.value)} />
+                                                    </div>
+                                                </>
+                                            )}
+                                            <div className="col-md-6">
+                                                <label className="form-label small fw-bold">Department</label>
+                                                <select className="form-select" value={builderDepartment} onChange={e => setBuilderDepartment(e.target.value)}>
+                                                    <option>All Departments</option>
+                                                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                {builderStep === 3 && builderType != null && (
+                                    <div className="d-flex flex-column gap-3">
+                                        <p className="mb-0 text-muted small">
+                                            <strong>{REPORT_TITLES[builderType]}</strong> — {getPeriodDatesFromPreset(builderPeriod, builderCustomFrom, builderCustomTo).label} · {builderDepartment !== 'All Departments' ? builderDepartment : 'All'}
+                                        </p>
+                                        <div>
+                                            <label className="form-label small fw-bold">Format</label>
+                                            <div className="d-flex gap-2">
+                                                <button type="button" className={`btn ${builderFormat === 'PDF' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setBuilderFormat('PDF')}>PDF</button>
+                                                <button type="button" className={`btn ${builderFormat === 'Excel' ? 'btn-success' : 'btn-outline-success'}`} onClick={() => setBuilderFormat('Excel')}>Excel</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="modal-footer">
+                                {builderStep === 1 && (
+                                    <button type="button" className="btn btn-outline-secondary" onClick={() => setBuilderOpen(false)}>Cancel</button>
+                                )}
+                                {builderStep === 2 && (
+                                    <>
+                                        <button type="button" className="btn btn-outline-secondary" onClick={() => setBuilderStep(1)}>Back</button>
+                                        <button type="button" className="btn btn-primary" style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }} onClick={() => setBuilderStep(3)}>Next</button>
+                                    </>
+                                )}
+                                {builderStep === 3 && (
+                                    <>
+                                        <button type="button" className="btn btn-outline-secondary" onClick={() => setBuilderStep(2)}>Back</button>
+                                        <button type="button" className="btn btn-outline-primary" onClick={handleBuilderEmail}>Email report</button>
+                                        <button type="button" className="btn btn-primary fw-bold" style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }} disabled={builderGenerating} onClick={handleBuilderGenerate}>
+                                            {builderGenerating ? <><span className="spinner-border spinner-border-sm me-1" />Generating…</> : <><span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>download</span>Generate &amp; download</>}
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Share by email modal */}
             {shareModalOpen && shareContext && (

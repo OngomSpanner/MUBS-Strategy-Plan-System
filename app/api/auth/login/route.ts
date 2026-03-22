@@ -9,13 +9,27 @@ export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
 
-    // Find user
-    const users = await query({
-      query: 'SELECT id, full_name, email, password_hash, role, status FROM users WHERE email = ?',
-      values: [email]
-    });
+    // Find user (must_change_password column may not exist if migration not run)
+    let users: any[];
+    try {
+      users = await query({
+        query: 'SELECT id, full_name, email, password_hash, role, status, COALESCE(must_change_password, 0) AS must_change_password FROM users WHERE email = ?',
+        values: [email]
+      }) as any[];
+    } catch (colError: any) {
+      const msg = (colError?.message || '').toLowerCase();
+      if (msg.includes('must_change_password') || msg.includes('unknown column')) {
+        users = await query({
+          query: 'SELECT id, full_name, email, password_hash, role, status FROM users WHERE email = ?',
+          values: [email]
+        }) as any[];
+        if (users[0]) (users[0] as any).must_change_password = 0;
+      } else {
+        throw colError;
+      }
+    }
 
-    const user = (users as any[])[0];
+    const user = users[0];
 
     if (!user) {
       return NextResponse.json(
@@ -73,17 +87,31 @@ export async function POST(request: Request) {
 
     // Remove password from response and inject active stats
     const { password_hash, ...userWithoutPassword } = user;
+    const mustChange = !!user.must_change_password;
     const userPayload = {
       ...userWithoutPassword,
       roles: rolesArray,
-      activeRole: activeRole
+      activeRole: activeRole,
+      mustChangePassword: mustChange
     };
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       message: 'Login successful',
       user: userPayload,
       token
     });
+
+    if (mustChange) {
+      res.cookies.set('must_change_password', '1', {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 60 * 60 * 24,
+        path: '/',
+      });
+    }
+
+    return res;
 
   } catch (error) {
     console.error('Login error:', error);

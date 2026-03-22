@@ -3,6 +3,7 @@ import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
+import { isCommitteeType } from '@/lib/committee-types';
 
 export async function GET(request: Request) {
   try {
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
     const assignedBy = decoded?.userId ?? null;
 
     const body = await request.json();
-    const { full_name, email, password, role, department_id } = body;
+    const { full_name, email, password, role, department_id, committee_types } = body;
 
     if (!full_name || !email || !role) {
       return NextResponse.json(
@@ -90,29 +91,85 @@ export async function POST(request: Request) {
     const roleStr = typeof role === 'string' ? role : (Array.isArray(role) ? role.join(',') : '');
     const departmentId = department_id != null && department_id !== '' ? Number(department_id) : null;
 
-    const result = await query({
-      query: 'INSERT INTO users (full_name, email, password_hash, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?)',
-      values: [full_name, email, hashedPassword, roleStr, departmentId, 'Active']
+    // Normalize role values for user_roles.role enum (snake_case: hod, unit_head, strategy_manager, etc.)
+    const roleList = roleStr.split(',').map((r: string) => r.trim()).filter(Boolean);
+    const roleListNormalized = roleList.map((r: string) => {
+      const lower = r.toLowerCase().replace(/\s+/g, '_');
+      const map: Record<string, string> = {
+        'system_administrator': 'system_admin', 'strategy_manager': 'strategy_manager',
+        'committee_member': 'committee_member', 'principal': 'principal',
+        'department_head': 'department_head', 'unit_head': 'unit_head', 'hod': 'hod',
+        'staff': 'staff', 'viewer': 'viewer'
+      };
+      return map[lower] || lower;
     });
 
-    const newUserId = (result as any).insertId;
-    const roleList = roleStr.split(',').map((r: string) => r.trim()).filter(Boolean);
-
-    for (const r of roleList) {
-      await query({
-        query: 'INSERT INTO user_roles (user_id, role, assigned_by) VALUES (?, ?, ?)',
-        values: [newUserId, r, assignedBy]
+    let newUserId: number;
+    try {
+      const result = await query({
+        query: 'INSERT INTO users (full_name, email, password_hash, role, department_id, status, must_change_password) VALUES (?, ?, ?, ?, ?, ?, 1)',
+        values: [full_name, email, hashedPassword, roleStr, departmentId, 'Active']
       });
+      newUserId = (result as any).insertId;
+    } catch (insertError: any) {
+      const msg = (insertError?.message || String(insertError)).toLowerCase();
+      if (msg.includes('must_change_password') || msg.includes('unknown column')) {
+        const result = await query({
+          query: 'INSERT INTO users (full_name, email, password_hash, role, department_id, status) VALUES (?, ?, ?, ?, ?, ?)',
+          values: [full_name, email, hashedPassword, roleStr, departmentId, 'Active']
+        });
+        newUserId = (result as any).insertId;
+      } else {
+        throw insertError;
+      }
+    }
+
+    for (const r of roleListNormalized) {
+      try {
+        await query({
+          query: 'INSERT INTO user_roles (user_id, role, assigned_by) VALUES (?, ?, ?)',
+          values: [newUserId, r, assignedBy]
+        });
+      } catch (roleErr: any) {
+        const roleMsg = roleErr?.message || String(roleErr);
+        console.error('user_roles insert failed for role:', r, roleMsg);
+        if (roleMsg.includes('unit_head') || roleMsg.includes('Data truncated') || roleMsg.includes('enum')) {
+          return NextResponse.json(
+            { message: `Could not assign role "${r}". Run migration add_unit_head_role.sql to enable Unit Head, or choose a different role.` },
+            { status: 500 }
+          );
+        }
+        throw roleErr;
+      }
+    }
+
+    // Committee assignments for committee_member role
+    const hasCommitteeRole = roleListNormalized.some((r: string) => r === 'committee_member');
+    if (hasCommitteeRole && Array.isArray(committee_types) && committee_types.length > 0) {
+      const validCommittees = committee_types
+        .map((c: unknown) => (typeof c === 'string' ? c.trim() : ''))
+        .filter((c: string) => c && isCommitteeType(c));
+      for (const ct of validCommittees) {
+        try {
+          await query({
+            query: 'INSERT INTO user_committee_assignments (user_id, committee_type) VALUES (?, ?)',
+            values: [newUserId, ct]
+          });
+        } catch (e: any) {
+          if (e?.code !== 'ER_NO_SUCH_TABLE') console.error('user_committee_assignments insert:', e);
+        }
+      }
     }
 
     return NextResponse.json({
       message: 'User created successfully',
       userId: newUserId
     }, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating user:', error);
+    const msg = error?.message || String(error);
     return NextResponse.json(
-      { message: 'Error creating user' },
+      { message: 'Error creating user', detail: msg },
       { status: 500 }
     );
   }

@@ -29,6 +29,21 @@ export async function GET() {
         if (!decoded || !decoded.userId) throw new Error('Invalid token');
         const userId = decoded.userId;
 
+        // 0. Staff user info for welcome message (name, department)
+        const userRows = await query({
+            query: `
+                SELECT u.full_name, u.position, d.name as department_name
+                FROM users u
+                LEFT JOIN departments d ON d.id = u.department_id
+                WHERE u.id = ?
+            `,
+            values: [userId]
+        }) as any[];
+        const staffUser = userRows?.[0];
+        const fullName = staffUser?.full_name?.trim() || 'Staff';
+        const position = staffUser?.position?.trim() || null;
+        const departmentName = staffUser?.department_name?.trim() || null;
+
         // 1. Task stats from assigned activities only
         const taskStats = await query({
             query: `
@@ -55,6 +70,7 @@ export async function GET() {
         const deadlinesRaw = await query({
             query: `
                 SELECT 
+                    sa.id,
                     sa.title,
                     sa.description,
                     aa.end_date as dueDate,
@@ -72,6 +88,7 @@ export async function GET() {
         }) as any[];
 
         const deadlines = deadlinesRaw.map((d: any) => ({
+            id: d.id,
             title: d.title,
             description: d.description || '',
             dueDate: d.dueDate,
@@ -103,33 +120,21 @@ export async function GET() {
         }) as any[];
 
         const feedback = feedbackRaw.map((f: any) => {
-            const score = f.rating ? ratingToScore[f.rating] : null;
             const status = f.db_status === 'evaluated' || f.db_status === 'acknowledged' ? 'Completed' : 'Returned';
             return {
                 id: f.id,
                 task: f.report_name,
-                score: score ?? 0,
                 status,
                 date: formatRelative(f.evaluated_at)
             };
         });
 
-        // Average score for dashboard stat
-        const avgResult = await query({
-            query: `
-                SELECT AVG(CASE e.rating
-                    WHEN 'excellent' THEN 5 WHEN 'good' THEN 4 WHEN 'satisfactory' THEN 3
-                    WHEN 'needs_improvement' THEN 2 WHEN 'poor' THEN 1 ELSE NULL END) as avg_score
-                FROM staff_reports sr
-                JOIN activity_assignments aa ON sr.activity_assignment_id = aa.id
-                LEFT JOIN evaluations e ON e.staff_report_id = sr.id
-                WHERE aa.assigned_to_user_id = ? AND e.rating IS NOT NULL
-            `,
-            values: [userId]
-        }) as any[];
-        const averageScore = avgResult[0]?.avg_score != null ? Number(Number(avgResult[0].avg_score).toFixed(1)) : null;
-
-        return NextResponse.json({ stats, deadlines, feedback, averageScore });
+        return NextResponse.json({
+            user: { fullName, position, departmentName },
+            stats,
+            deadlines,
+            feedback
+        });
     } catch (error: any) {
         console.error('Staff Dashboard API Error:', error);
         return NextResponse.json(

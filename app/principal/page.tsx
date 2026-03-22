@@ -4,6 +4,7 @@ import ExecutiveOverview from '@/app/principal/views/ExecutiveOverview';
 import StrategicSummary from '@/app/principal/views/StrategicSummary';
 import PerformanceAnalytics from '@/app/principal/views/PerformanceAnalytics';
 import PrincipalReports from '@/app/principal/views/PrincipalReports';
+import PrincipalCommitteeProposals from '@/app/principal/views/PrincipalCommitteeProposals';
 
 interface PrincipalPageProps {
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -21,6 +22,8 @@ export default async function PrincipalDashboard({ searchParams }: PrincipalPage
                 return <PerformanceAnalytics />;
             case 'reports':
                 return <PrincipalReports />;
+            case 'proposals':
+                return <PrincipalCommitteeProposals />;
             case 'executive':
             default:
                 return <ExecutiveOverview />;

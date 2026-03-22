@@ -75,14 +75,7 @@ export default function CommitteePropose() {
                                         ))}
                                     </select>
                                 </div>
-                                <div className="col-md-6">
-                                    <label className="form-label fw-black text-dark small">Priority Level</label>
-                                    <select className="form-select">
-                                        <option>High</option>
-                                        <option>Medium</option>
-                                        <option>Low</option>
-                                    </select>
-                                </div>
+
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small">Description / Rationale <span className="text-danger">*</span></label>
                                     <textarea className="form-control" rows={4} placeholder="Describe what this activity involves, why it is proposed, and what outcome it aims to achieve based on the committee's discussion..."></textarea>

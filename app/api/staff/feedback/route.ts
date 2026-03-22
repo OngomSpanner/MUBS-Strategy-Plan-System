@@ -5,8 +5,6 @@ import { verifyToken } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-const ratingToScore: Record<string, number> = { excellent: 5, good: 4, satisfactory: 3, needs_improvement: 2, poor: 1 };
-
 export async function GET() {
     try {
         const cookieStore = await cookies();
@@ -16,17 +14,17 @@ export async function GET() {
         const decoded = verifyToken(token) as any;
         if (!decoded || !decoded.userId) throw new Error('Invalid token');
 
-        // Fetch reports that have been evaluated by HOD: any report with an evaluation record for this staff's assignments
+        // Fetch reports that have been evaluated by HOD
         const feedbackRecordsRaw = await query({
             query: `
                 SELECT 
                     sr.id,
+                    aa.id as task_id,
                     sa.title AS report_name,
                     p.title AS activity_title,
                     u.full_name AS evaluator_name,
                     COALESCE(e.evaluation_date, sr.updated_at) AS evaluated_at,
                     sr.status AS db_status,
-                    e.rating,
                     e.qualitative_feedback AS reviewer_notes
                 FROM staff_reports sr
                 JOIN activity_assignments aa ON sr.activity_assignment_id = aa.id
@@ -41,34 +39,21 @@ export async function GET() {
         }) as any[];
 
         const feedbackRecords = feedbackRecordsRaw.map(r => {
-            const status = (r.db_status === 'evaluated' || r.db_status === 'acknowledged') ? 'Completed' : 'Returned';
-            const ratingKey = r.rating ? String(r.rating).toLowerCase().replace(/\s+/g, '_') : null;
-            const score = ratingKey ? (ratingToScore[ratingKey] ?? null) : null;
+            const status = (r.db_status === 'evaluated' || r.db_status === 'acknowledged') ? 'Completed' : r.db_status === 'incomplete' ? 'Incomplete' : r.db_status === 'not_done' ? 'Not Done' : 'Returned';
             return {
                 ...r,
                 status,
-                score: score ?? 0,
                 evaluator_name: r.evaluator_name || 'Department Head'
             };
-        }).map(({ rating, ...rest }) => rest);
-
-        let totalScore = 0;
-        let evaluatedCount = 0;
-        feedbackRecords.forEach((record: any) => {
-            if (record.score != null && record.score > 0) {
-                totalScore += record.score;
-                evaluatedCount++;
-            }
         });
-        const overallAverage = evaluatedCount > 0 ? (totalScore / evaluatedCount).toFixed(1) : '0.0';
 
         const stats = {
             totalEvaluations: feedbackRecords.length,
-            averageScore: overallAverage,
             completionRate: feedbackRecords.length > 0
                 ? Math.round((feedbackRecords.filter((r: any) => r.status === 'Completed').length / feedbackRecords.length) * 100)
                 : 0,
-            returnedCount: feedbackRecords.filter((r: any) => r.status === 'Returned').length
+            returnedCount: feedbackRecords.filter((r: any) => r.status === 'Returned').length,
+            incompleteCount: feedbackRecords.filter((r: any) => r.status === 'Incomplete').length
         };
 
         return NextResponse.json({

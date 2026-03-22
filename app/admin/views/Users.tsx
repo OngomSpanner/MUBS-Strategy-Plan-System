@@ -5,6 +5,7 @@ import Layout from '@/components/Layout';
 import { Modal, Button, Form } from 'react-bootstrap';
 import CreateUserModal from '@/components/Modals/CreateUserModal';
 import { formatRoleForDisplay } from '@/lib/role-routing';
+import { COMMITTEE_TYPES } from '@/lib/committee-types';
 import axios from 'axios';
 
 interface User {
@@ -37,7 +38,7 @@ export default function UsersView() {
     // Edit modal state
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [showEditModal, setShowEditModal] = useState(false);
-    const [editForm, setEditForm] = useState({ full_name: '', email: '', role: '', department_id: '' as string | number });
+    const [editForm, setEditForm] = useState({ full_name: '', email: '', role: '', department_id: '' as string | number, committee_types: [] as string[] });
     const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
     const [saving, setSaving] = useState(false);
 
@@ -71,7 +72,7 @@ export default function UsersView() {
     useEffect(() => {
         const loadDepartments = async () => {
             try {
-                const { data } = await axios.get('/api/departments');
+                const { data } = await axios.get('/api/departments?units_only=true');
                 setDepartments(Array.isArray(data) ? data : []);
             } catch (e) {
                 console.error('Error loading departments', e);
@@ -103,14 +104,26 @@ export default function UsersView() {
         }
     };
 
-    const openEditModal = (user: User) => {
+    const openEditModal = async (user: User) => {
         setSelectedUser(user);
-        setEditForm({
-            full_name: user.full_name,
-            email: user.email,
-            role: user.role,
-            department_id: user.department_id != null ? user.department_id : ''
-        });
+        try {
+            const { data } = await axios.get(`/api/users/${user.id}`);
+            setEditForm({
+                full_name: data.full_name ?? user.full_name,
+                email: data.email ?? user.email,
+                role: data.role ?? user.role,
+                department_id: data.department_id != null ? data.department_id : '',
+                committee_types: Array.isArray(data.committees) ? data.committees : [],
+            });
+        } catch {
+            setEditForm({
+                full_name: user.full_name,
+                email: user.email,
+                role: user.role,
+                department_id: user.department_id != null ? user.department_id : '',
+                committee_types: [],
+            });
+        }
         setShowEditModal(true);
     };
 
@@ -122,7 +135,8 @@ export default function UsersView() {
                 full_name: editForm.full_name.trim(),
                 email: editForm.email.trim(),
                 role: editForm.role,
-                department_id: editForm.department_id === '' ? null : Number(editForm.department_id)
+                department_id: editForm.department_id === '' ? null : Number(editForm.department_id),
+                committee_types: editForm.committee_types,
             };
             await axios.put(`/api/users/${selectedUser.id}`, payload);
             setShowEditModal(false);
@@ -177,6 +191,7 @@ export default function UsersView() {
             'System Administrator': { bg: '#eff6ff', color: 'var(--mubs-blue)' },
             'Strategy Manager': { bg: '#fdf2f8', color: '#9333ea' },
             'Department Head': { bg: '#fff7ed', color: '#ea580c' },
+            'Unit Head': { bg: '#f0f9ff', color: '#0369a1' },
             'HOD': { bg: '#f0f9ff', color: '#0369a1' },
             'Committee Member': { bg: '#f5f3ff', color: '#6d28d9' },
             'Staff': { bg: '#eff6ff', color: 'var(--mubs-blue)' }
@@ -187,7 +202,7 @@ export default function UsersView() {
     const getRoleIcon = (role: string) =>
         role === 'System Administrator' ? 'shield' :
             role === 'Strategy Manager' ? 'manage_accounts' :
-                role === 'Department Head' || role === 'HOD' ? 'corporate_fare' :
+                role === 'Department Head' || role === 'Unit Head' || role === 'HOD' ? 'corporate_fare' :
                     role === 'Committee Member' ? 'groups' : 'assignment_ind';
 
     // Client-side pagination
@@ -380,7 +395,7 @@ export default function UsersView() {
             </div>
 
             {/* Edit User Modal */}
-            <Modal show={showEditModal} onHide={() => setShowEditModal(false)} centered>
+            <Modal show={showEditModal} onHide={() => setShowEditModal(false)} centered backdrop="static" keyboard={false} size="lg">
                 <Modal.Header closeButton className="modal-header-mubs">
                     <Modal.Title className="fw-bold d-flex align-items-center gap-2">
                         <span className="material-symbols-outlined">manage_accounts</span>
@@ -442,6 +457,30 @@ export default function UsersView() {
                                 ))}
                             </Form.Select>
                         </div>
+                        {editForm.role && editForm.role.split(',').map((r: string) => r.trim()).filter(Boolean).some((r: string) => r === 'committee_member' || formatRoleForDisplay(r) === 'Committee Member') && (
+                            <div className="col-12">
+                                <Form.Label className="fw-bold small">Committees</Form.Label>
+                                <div className="d-flex flex-wrap gap-2 p-2 border rounded bg-light">
+                                    {COMMITTEE_TYPES.map((ct) => (
+                                        <div key={ct} className="form-check">
+                                            <input
+                                                type="checkbox"
+                                                className="form-check-input"
+                                                id={`edit-committee-${ct}`}
+                                                checked={editForm.committee_types.includes(ct)}
+                                                onChange={e => {
+                                                    const next = e.target.checked
+                                                        ? [...editForm.committee_types, ct]
+                                                        : editForm.committee_types.filter((x: string) => x !== ct);
+                                                    setEditForm({ ...editForm, committee_types: next });
+                                                }}
+                                            />
+                                            <label className="form-check-label small" htmlFor={`edit-committee-${ct}`}>{ct}</label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </Modal.Body>
                 <Modal.Footer>
@@ -459,7 +498,7 @@ export default function UsersView() {
             </Modal>
 
             {/* Delete Confirmation Modal */}
-            <Modal show={showDeleteModal} onHide={() => !deleting && setShowDeleteModal(false)} centered>
+            <Modal show={showDeleteModal} onHide={() => !deleting && setShowDeleteModal(false)} centered backdrop="static" keyboard={false} size="lg">
                 <Modal.Header closeButton className="modal-header-mubs">
                     <Modal.Title className="fw-bold d-flex align-items-center gap-2 text-danger">
                         <span className="material-symbols-outlined">warning</span>

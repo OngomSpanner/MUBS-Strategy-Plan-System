@@ -25,10 +25,18 @@ export async function getVisibleDepartmentIds(userId: number): Promise<number[]>
         return [departmentId, parentId];
     }
 
-    const children = await query({
-        query: 'SELECT id FROM departments WHERE parent_id = ? AND is_active = 1',
-        values: [departmentId]
-    }) as any[];
+    let children: any[] = [];
+    try {
+        children = await query({
+            query: 'SELECT id FROM departments WHERE parent_id = ? AND is_active = 1',
+            values: [departmentId]
+        }) as any[];
+    } catch {
+        children = await query({
+            query: 'SELECT id FROM departments WHERE parent_id = ?',
+            values: [departmentId]
+        }) as any[];
+    }
     const childIds = (children || []).map((r: any) => r.id);
     return [departmentId, ...childIds];
 }

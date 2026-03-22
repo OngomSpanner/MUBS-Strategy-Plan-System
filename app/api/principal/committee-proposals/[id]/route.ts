@@ -43,7 +43,7 @@ export async function PATCH(
             query: `
                 UPDATE committee_proposals
                 SET status = ?, reviewed_date = CURDATE(), reviewer_notes = ?
-                WHERE id = ? AND status IN ('Pending', 'Edit Requested')
+                WHERE id = ? AND status = 'Strategy Reviewed'
             `,
             values: [action, reviewer_notes ?? null, proposalId]
         });

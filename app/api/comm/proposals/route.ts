@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
-
-const committeeTypes = ['Council', 'TMC', 'Academic Board', 'Other'] as const;
+import { COMMITTEE_TYPES } from '@/lib/committee-types';
+import { getCommitteesForUser } from '@/lib/user-committees';
 
 export async function GET(req: Request) {
     try {
@@ -21,6 +21,9 @@ export async function GET(req: Request) {
         const statusFilter = searchParams.get('status');
         const myOnly = searchParams.get('my') === '1' || searchParams.get('my') === 'true';
 
+        // Restrict to user's committees when they have assignments (same as dashboard)
+        const userCommittees = await getCommitteesForUser(userId);
+
         let whereClause = '1=1';
         const values: (string | number)[] = [];
         if (statusFilter) {
@@ -34,6 +37,10 @@ export async function GET(req: Request) {
         if (myOnly) {
             whereClause += ' AND cp.submitted_by = ?';
             values.push(userId);
+        }
+        if (userCommittees.length > 0) {
+            whereClause += ` AND cp.committee_type IN (${userCommittees.map(() => '?').join(',')})`;
+            values.push(...userCommittees);
         }
 
         let list: any[];
@@ -179,7 +186,7 @@ export async function POST(req: Request) {
 
         const minuteRef = minute_reference || meeting_reference || null;
         const deptId = department_id ?? suggested_unit_id ?? null;
-        const type = committee_type && committeeTypes.includes(committee_type) ? committee_type : 'Other';
+        const type = committee_type && COMMITTEE_TYPES.includes(committee_type) ? committee_type : 'Other';
 
         const submitterRows = await query({
             query: 'SELECT full_name FROM users WHERE id = ?',

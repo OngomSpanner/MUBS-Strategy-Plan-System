@@ -27,9 +27,21 @@ export async function GET() {
       });
     }
 
+    // Department name(s) for hero banner – primary is user's assigned department
+    const deptRows = await query({
+      query: `SELECT id, name FROM departments WHERE id IN (${inPlaceholders(departmentIds.length)})`,
+      values: [...departmentIds]
+    }) as any[];
+    const departmentNames = (deptRows || []).map((r: any) => r.name).filter(Boolean);
+    const primaryId = departmentIds[0];
+    const departmentName = primaryId != null
+      ? (deptRows || []).find((r: any) => Number(r.id) === Number(primaryId))?.name || departmentNames[0] || null
+      : departmentNames[0] || null;
+
     const placeholders = inPlaceholders(departmentIds.length);
 
-    // 1. Department Stats (Activities) - main activities in visible departments
+    // 1. Department Stats (Activities) - terminal activities assigned to OUR visible departments
+    // Pick 'detailed' if it exists for the dept, otherwise 'main' if it exists for the dept.
     const activityStats = await query({
       query: `
                 SELECT 
@@ -37,13 +49,18 @@ export async function GET() {
                     SUM(CASE WHEN status IN ('completed', 'in_progress') THEN 1 ELSE 0 END) as \`onTrack\`,
                     SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as \`inProgress\`,
                     SUM(CASE WHEN status = 'overdue' THEN 1 ELSE 0 END) as \`delayed\`
-                FROM strategic_activities
-                WHERE department_id IN (${placeholders}) AND parent_id IS NULL
+                FROM strategic_activities sa
+                WHERE sa.department_id IN (${placeholders})
+                  AND (
+                    sa.activity_type = 'detailed' 
+                    OR 
+                    (sa.activity_type = 'main' AND sa.id NOT IN (SELECT parent_id FROM strategic_activities WHERE department_id = sa.department_id AND activity_type = 'detailed'))
+                  )
             `,
       values: [...departmentIds]
     }) as any[];
 
-    // 2. Task Stats (from activity_assignments linked to department's activities)
+    // 2. Task Stats (from activity_assignments linked to terminal activities in visible departments)
     const taskStats = await query({
       query: `
                 SELECT 
@@ -51,9 +68,14 @@ export async function GET() {
                     SUM(CASE WHEN aa.status = 'submitted' THEN 1 ELSE 0 END) as \`pendingSubmissions\`
                 FROM activity_assignments aa
                 JOIN strategic_activities sa ON aa.activity_id = sa.id
-                WHERE sa.department_id IN (${placeholders}) OR sa.parent_id IN (SELECT id FROM strategic_activities WHERE department_id IN (${placeholders}))
+                WHERE sa.department_id IN (${placeholders})
+                  AND (
+                    sa.activity_type = 'detailed' 
+                    OR 
+                    (sa.activity_type = 'main' AND sa.id NOT IN (SELECT parent_id FROM strategic_activities WHERE department_id = sa.department_id AND activity_type = 'detailed'))
+                  )
             `,
-      values: [...departmentIds, ...departmentIds]
+      values: [...departmentIds]
     }) as any[];
 
     // 3. HR Warnings - users in any visible department
@@ -74,7 +96,7 @@ export async function GET() {
       values: [...departmentIds]
     }) as any[];
 
-    // 4. Activity Progress Table - main activities with progress computed from child tasks
+    // 4. Activity Progress Table - terminal activities assigned to OUR departments
     const activityProgressQuery = await query({
       query: `
                 SELECT 
@@ -82,37 +104,33 @@ export async function GET() {
                     sa.title,
                     sa.status,
                     sa.progress as stored_progress,
-                    sa.end_date,
-                    (SELECT COUNT(*) FROM strategic_activities c WHERE c.parent_id = sa.id) as child_count,
-                    (SELECT COUNT(*) FROM strategic_activities c WHERE c.parent_id = sa.id AND c.status = 'completed') as child_completed
+                    sa.end_date
                 FROM strategic_activities sa
-                WHERE sa.department_id IN (${placeholders}) AND sa.parent_id IS NULL
+                WHERE sa.department_id IN (${placeholders})
+                  AND (
+                    sa.activity_type = 'detailed' 
+                    OR 
+                    (sa.activity_type = 'main' AND sa.id NOT IN (SELECT parent_id FROM strategic_activities WHERE department_id = sa.department_id AND activity_type = 'detailed'))
+                  )
                 ORDER BY sa.created_at DESC
                 LIMIT 4
             `,
       values: [...departmentIds]
     }) as any[];
     
-    // Map db status to UI status; use computed progress from child tasks when available
+    // Map db status to UI status
     const dbStatusMap: Record<string, string> = {
       'pending': 'Pending',
       'in_progress': 'In Progress',
       'completed': 'On Track',
       'overdue': 'Delayed'
     };
-    const activityProgress = activityProgressQuery.map((row: any) => {
-      const childCount = Number(row.child_count) || 0;
-      const childCompleted = Number(row.child_completed) || 0;
-      const computedProgress = childCount > 0
-        ? Math.round((childCompleted / childCount) * 100)
-        : (row.stored_progress != null ? Number(row.stored_progress) : 0);
-      return {
-        title: row.title,
-        status: dbStatusMap[row.status] || row.status,
-        progress: computedProgress,
-        end_date: row.end_date
-      };
-    });
+    const activityProgress = activityProgressQuery.map((row: any) => ({
+      title: row.title,
+      status: dbStatusMap[row.status] || row.status,
+      progress: row.stored_progress != null ? Number(row.stored_progress) : 0,
+      end_date: row.end_date
+    }));
 
     // 5. Recent Submissions (from staff_reports)
     const recentSubmissions = await query({
@@ -126,12 +144,17 @@ export async function GET() {
                 JOIN activity_assignments aa ON sr.activity_assignment_id = aa.id
                 JOIN strategic_activities sa ON aa.activity_id = sa.id
                 JOIN users u ON sr.submitted_by = u.id
-                WHERE (sa.department_id IN (${placeholders}) OR sa.parent_id IN (SELECT id FROM strategic_activities WHERE department_id IN (${placeholders})))
-                AND sr.status IN ('submitted', 'evaluated')
+                WHERE sa.department_id IN (${placeholders})
+                  AND (
+                    sa.activity_type = 'detailed' 
+                    OR 
+                    (sa.activity_type = 'main' AND sa.id NOT IN (SELECT parent_id FROM strategic_activities WHERE department_id = sa.department_id AND activity_type = 'detailed'))
+                  )
+                  AND sr.status IN ('submitted', 'evaluated')
                 ORDER BY sr.updated_at DESC
                 LIMIT 4
             `,
-      values: [...departmentIds, ...departmentIds]
+      values: [...departmentIds]
     }) as any[];
 
     const submissionStatusMap: Record<string, string> = {
@@ -144,6 +167,7 @@ export async function GET() {
     }));
 
     return NextResponse.json({
+      departmentName: departmentName || 'Department',
       stats: {
         totalActivities: activityStats[0]?.totalActivities || 0,
         onTrack: activityStats[0]?.onTrack || 0,

@@ -168,7 +168,7 @@ export default function CommApproved() {
                                 </div>
                             </div>
                             <div className="modal-footer border-0">
-                                <button type="button" className="btn btn-outline-secondary" onClick={closeModal}>Close</button>
+
                             </div>
                         </div>
                     </div>

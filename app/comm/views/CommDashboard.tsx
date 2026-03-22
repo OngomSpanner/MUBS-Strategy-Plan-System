@@ -35,6 +35,7 @@ export default function CommDashboard() {
     const [stats, setStats] = useState<CommitteeStats | null>(null);
     const [proposals, setProposals] = useState<ProposalItem[]>([]);
     const [activity, setActivity] = useState<ActivityItem[]>([]);
+    const [committees, setCommittees] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -44,6 +45,7 @@ export default function CommDashboard() {
                 setStats(res.data.stats || { total: 0, approved: 0, pending: 0, rejected: 0 });
                 setProposals(Array.isArray(res.data.proposals) ? res.data.proposals : []);
                 setActivity(Array.isArray(res.data.activity) ? res.data.activity : []);
+                setCommittees(Array.isArray(res.data.committees) ? res.data.committees : []);
                 const total = Number(res.data.stats?.total) || 0;
                 const approved = Number(res.data.stats?.approved) || 0;
                 const rejected = Number(res.data.stats?.rejected) || 0;
@@ -80,7 +82,18 @@ export default function CommDashboard() {
                         <div className="d-flex align-items-center gap-2 mb-1">
                             <span className="material-symbols-outlined" style={{ color: '#a78bfa', fontSize: '28px' }}>groups</span>
                             <div>
-                                <div className="fw-black text-white" style={{ fontSize: '1.1rem' }}>Academic Board Committee</div>
+                                <div className="fw-black text-white" style={{ fontSize: '1.1rem' }}>
+                                    {committees.length > 0
+                                        ? (committees.length === 1 ? committees[0] : 'My committees')
+                                        : 'Committee'}
+                                </div>
+                                <div style={{ fontSize: '.75rem', color: '#c4b5fd' }}>
+                                    {committees.length > 0
+                                        ? committees.length === 1
+                                            ? 'Viewing proposals for your committee'
+                                            : `Viewing: ${committees.join(', ')}`
+                                        : 'Viewing all committee proposals'}
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -33,6 +33,18 @@ export async function GET() {
 
         const rolesArray = parseRoles(user.role);
 
+        // Committee assignments (for Committee Member role) – empty if table not yet migrated
+        let committees: string[] = [];
+        try {
+            const rows = await query({
+                query: 'SELECT committee_type FROM user_committee_assignments WHERE user_id = ? ORDER BY committee_type',
+                values: [user.id]
+            }) as any[];
+            committees = (rows || []).map((r: any) => r.committee_type).filter(Boolean);
+        } catch {
+            // user_committee_assignments may not exist yet
+        }
+
         // Determine active role: cookie (if valid) → token role (if valid) → priority pick
         // Accept both canonical ("Strategy Manager") and DB form ("strategy_manager")
         let activeRole = activeRoleCookie || decoded.role;
@@ -51,7 +63,8 @@ export async function GET() {
                 position: user.position ?? null,
             },
             roles: rolesArray,
-            activeRole: activeRole
+            activeRole: activeRole,
+            committees,
         });
 
     } catch (error) {

@@ -15,8 +15,8 @@ export async function GET() {
       return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
     }
 
-    // 1. Department progress: all active departments + strategic_activities
-    // DB status enum: pending, in_progress, completed, overdue
+    // 1. Department progress: all active departments + THEIR terminal activities for each goal
+    // We pick 'detailed' if it exists for that dept, otherwise 'main' if it exists for that dept.
     const departmentRows = (await query({
       query: `
         SELECT
@@ -30,7 +30,13 @@ export async function GET() {
             ELSE 0
           END) AS delayed_count
         FROM departments d
-        LEFT JOIN strategic_activities sa ON d.id = sa.department_id
+        LEFT JOIN strategic_activities sa ON d.id = sa.department_id 
+          AND sa.source IS NOT NULL
+          AND (
+            sa.activity_type = 'detailed' 
+            OR 
+            (sa.activity_type = 'main' AND sa.id NOT IN (SELECT parent_id FROM strategic_activities WHERE department_id = d.id AND activity_type = 'detailed'))
+          )
         WHERE d.is_active = 1
         GROUP BY d.id, d.name
         ORDER BY d.name
@@ -52,7 +58,7 @@ export async function GET() {
       };
     });
 
-    // 2. Delayed activities: status = 'overdue' OR (end_date < today AND not completed)
+    // 2. Delayed activities: per-department (detailed rows for shared, main rows for single)
     const delayedRows = (await query({
       query: `
         SELECT
@@ -65,8 +71,15 @@ export async function GET() {
           sa.progress
         FROM strategic_activities sa
         LEFT JOIN departments d ON sa.department_id = d.id
-        WHERE sa.status = 'overdue'
-           OR (sa.end_date IS NOT NULL AND sa.end_date < CURDATE() AND sa.status NOT IN ('completed'))
+        WHERE d.id IS NOT NULL 
+          AND sa.source IS NOT NULL
+          AND (
+            sa.activity_type = 'detailed' 
+            OR 
+            (sa.activity_type = 'main' AND sa.id NOT IN (SELECT parent_id FROM strategic_activities WHERE department_id = sa.department_id AND activity_type = 'detailed'))
+          )
+          AND (sa.status = 'overdue'
+           OR (sa.end_date IS NOT NULL AND sa.end_date < CURDATE() AND sa.status NOT IN ('completed')))
         ORDER BY sa.end_date ASC
       `
     })) as any[];
@@ -99,7 +112,14 @@ export async function GET() {
           DATEDIFF(sa.end_date, CURDATE()) AS daysUntilDue
         FROM strategic_activities sa
         LEFT JOIN departments d ON sa.department_id = d.id
-        WHERE sa.status NOT IN ('completed', 'overdue')
+        WHERE d.id IS NOT NULL
+          AND sa.source IS NOT NULL
+          AND (
+            sa.activity_type = 'detailed' 
+            OR 
+            (sa.activity_type = 'main' AND sa.id NOT IN (SELECT parent_id FROM strategic_activities WHERE department_id = sa.department_id AND activity_type = 'detailed'))
+          )
+          AND sa.status NOT IN ('completed', 'overdue')
           AND sa.end_date IS NOT NULL
           AND sa.end_date >= CURDATE()
           AND sa.end_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
@@ -119,7 +139,7 @@ export async function GET() {
 
     const alerts = [...overdueAlerts, ...upcomingAlerts].slice(0, 10);
 
-    // 4. Summary: onTrack, delayed, atRisk, alerts
+    // 4. Summary: onTrack, delayed, atRisk (Aggregate based on High-Level goals/Main rows)
     const summaryRows = (await query({
       query: `
         SELECT
@@ -137,6 +157,7 @@ export async function GET() {
             THEN 1 ELSE 0
           END) AS atRisk
         FROM strategic_activities
+        WHERE parent_id IS NULL AND source IS NOT NULL
       `
     })) as any[];
 

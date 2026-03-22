@@ -11,6 +11,7 @@ const ASSIGNABLE_ROLES = [
   'strategy_manager',
   'committee_member',
   'hod',
+  'unit_head',
   'staff',
   'principal',
   'system_admin'

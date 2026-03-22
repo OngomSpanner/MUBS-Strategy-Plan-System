@@ -5,6 +5,8 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import StatCard from '@/components/StatCard';
+import EvaluationCardGrid from '@/components/Department/EvaluationCardGrid';
 
 interface Evaluation {
     id: number;
@@ -15,8 +17,11 @@ interface Evaluation {
     status: string;
     progress: number;
     report_summary: string;
+    attachments?: string | null;
     score?: number;
     reviewer_notes?: string;
+    task_type?: 'process' | 'kpi_driver';
+    kpi_actual_value?: number | null;
 }
 
 interface EvaluationData {
@@ -29,17 +34,36 @@ export default function DepartmentEvaluations() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Draft states for evaluations
-    const [scores, setScores] = useState<{ [key: number]: number }>({});
+    // Draft states for evaluations (performance: Complete=2, Incomplete=1, Not Done=0)
+    const [selectedRating, setSelectedRating] = useState<{ [key: number]: 'Complete' | 'Incomplete' | 'Not Done' }>({});
     const [comments, setComments] = useState<{ [key: number]: string }>({});
+    const [kpiActualValues, setKpiActualValues] = useState<{ [key: number]: string }>({});
+    const [evidenceOpened, setEvidenceOpened] = useState<{ [key: number]: boolean }>({});
 
     // Modal view states
     const [evaluateModalItem, setEvaluateModalItem] = useState<Evaluation | null>(null);
     const [viewModalItem, setViewModalItem] = useState<Evaluation | null>(null);
 
+    // Table filter & pagination
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+
     useEffect(() => {
         fetchData();
     }, []);
+    
+    useEffect(() => {
+        if (evaluateModalItem) {
+            const id = evaluateModalItem.id;
+            // Pre-populate KPI value from what staff entered if not already set locally
+            if (evaluateModalItem.kpi_actual_value != null && kpiActualValues[id] === undefined) {
+                setKpiActualValues(prev => ({ ...prev, [id]: String(evaluateModalItem.kpi_actual_value) }));
+            }
+        }
+    }, [evaluateModalItem]);
 
     const fetchData = async () => {
         try {
@@ -78,38 +102,47 @@ export default function DepartmentEvaluations() {
         );
     }
 
-    const handleScore = (id: number, score: number) => {
-        setScores(prev => ({ ...prev, [id]: score }));
-    };
-
     const handleComment = (id: number, comment: string) => {
         setComments(prev => ({ ...prev, [id]: comment }));
     };
 
-    const handleSubmitEvaluation = async (id: number, status: 'Completed' | 'Returned') => {
-        const score = scores[id];
+    const handleSubmitEvaluation = async () => {
+        if (!evaluateModalItem) return;
+        const id = evaluateModalItem.id;
+        const status = selectedRating[id];
         const comment = comments[id];
+        const item = data?.pending.find(p => p.id === id) ?? data?.completed.find(c => c.id === id);
+        const isKpiDriver = item?.task_type === 'kpi_driver';
+        const kpiActual = kpiActualValues[id];
 
-        if (status === 'Completed' && !score) {
-            alert("Please provide a quality score before accepting the evaluation.");
+        if (!status) {
+            alert('Please select a rating: Complete (2 pts), Incomplete (1 pt), or Not Done (0 pts).');
+            return;
+        }
+        if (status === 'Incomplete' && (!comment || String(comment).trim() === '')) {
+            alert('Comment is required when marking Incomplete.');
             return;
         }
 
+        const score = status === 'Complete' ? 2 : status === 'Incomplete' ? 1 : 0;
         try {
-            await axios.put('/api/department-head/evaluations', {
+            const res = await axios.put('/api/department-head/evaluations', {
                 id,
                 status,
-                score: status === 'Completed' ? (score ?? undefined) : undefined,
-                reviewer_notes: comment || ''
+                score,
+                reviewer_notes: comment || '',
+                kpi_actual_value: status === 'Complete' && isKpiDriver && kpiActual != null && String(kpiActual).trim() !== '' ? Number(kpiActual) : undefined
             });
+            const updated = res.data?.updated;
+            if (updated && status === 'Complete' && (updated.taskId || updated.parentId)) {
+                console.log('Evaluation saved. Task/parent updated in DB:', updated);
+            }
 
             await fetchData();
-            setEvaluateModalItem(null); // Close modal on success
-
-            // clear state for this item
-            setScores(prev => { const newScores = { ...prev }; delete newScores[id]; return newScores; });
-            setComments(prev => { const newComments = { ...prev }; delete newComments[id]; return newComments; });
-
+            setEvaluateModalItem(null);
+            setSelectedRating(prev => { const next = { ...prev }; delete next[id]; return next; });
+            setComments(prev => { const next = { ...prev }; delete next[id]; return next; });
+            setKpiActualValues(prev => { const next = { ...prev }; delete next[id]; return next; });
         } catch (error: any) {
             console.error('Error submitting evaluation:', error);
             const msg = error.response?.data?.message || error.response?.data?.detail || 'Failed to submit evaluation.';
@@ -127,6 +160,33 @@ export default function DepartmentEvaluations() {
         return name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
     };
 
+    /** Rating used to evaluate: Complete, Incomplete, or Not Done. Shown in table and Evaluation Record modal. */
+    const getRatingLabel = (e: { score?: number | null; status: string }, isPending = false): string => {
+        if (isPending || e.status === 'Pending') return '—';
+        if (e.score != null && e.score <= 2) {
+            if (e.score === 2) return 'Complete';
+            if (e.score === 1) return 'Incomplete';
+            return 'Not Done';
+        }
+        if (e.status === 'Completed') return 'Complete';
+        if (e.status === 'Not Done') return 'Not Done';
+        if (e.status === 'Incomplete' || e.status === 'Returned') return 'Incomplete';
+        return '—';
+    };
+
+    const parseEvidenceItems = (attachments?: string | null): { label: string; url: string }[] => {
+        if (!attachments) return [];
+        return attachments
+            .split('|')
+            .map(part => part.trim())
+            .filter(part => part.length > 0)
+            .map(part => {
+                const isUpload = part.startsWith('/uploads/');
+                const label = isUpload ? 'Uploaded file' : 'Evidence link';
+                return { label, url: part };
+            });
+    };
+
     const handleExportExcel = () => {
         if (!data || data.completed.length === 0) {
             alert("No completed evaluations to export.");
@@ -140,7 +200,7 @@ export default function DepartmentEvaluations() {
             "Date Evaluated": formatDate(e.submitted_at),
             "Status": e.status === 'Completed' ? 'Accepted' : 'Returned',
             "Progress": `${e.progress}%`,
-            "Score": e.score || 'N/A'
+            "Rating": getRatingLabel(e)
         }));
 
         const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -161,14 +221,14 @@ export default function DepartmentEvaluations() {
         doc.setFontSize(10);
         doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 22);
 
-        const tableColumn = ["Staff Name", "Activity Title", "Report Name", "Date Evaluated", "Status", "Score"];
+        const tableColumn = ["Staff Name", "Activity Title", "Report Name", "Date Evaluated", "Status", "Rating"];
         const tableRows = data.completed.map(e => [
             e.staff_name,
             e.activity_title,
             e.report_name,
             formatDate(e.submitted_at),
             e.status === 'Completed' ? 'Accepted' : 'Returned',
-            e.score ? `${e.score}/5` : 'N/A'
+            getRatingLabel(e)
         ]);
 
         autoTable(doc, {
@@ -184,6 +244,48 @@ export default function DepartmentEvaluations() {
 
     return (
         <div id="page-evaluations" className="page-section active-page position-relative">
+            <div className="row g-4 mb-4">
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="pending_actions"
+                        label="Total Pending"
+                        value={data.pending.length}
+                        badge="Needs Review"
+                        badgeIcon="schedule"
+                        color="blue"
+                    />
+                </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="task_alt"
+                        label="Total Completed"
+                        value={data.completed.length}
+                        badge="Evaluated"
+                        badgeIcon="done_all"
+                        color="green"
+                    />
+                </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="check_circle"
+                        label="Accepted"
+                        value={data.completed.filter(e => e.status === 'Completed').length}
+                        badge="Approved"
+                        badgeIcon="thumb_up"
+                        color="yellow"
+                    />
+                </div>
+                <div className="col-12 col-sm-6 col-xl-3">
+                    <StatCard
+                        icon="assignment_return"
+                        label="Returned"
+                        value={data.completed.filter(e => e.status !== 'Completed').length}
+                        badge="Requires Edits"
+                        badgeIcon="edit_note"
+                        color="red"
+                    />
+                </div>
+            </div>
 
             {/* Modal Backdrop */}
             {(evaluateModalItem || viewModalItem) && (
@@ -192,381 +294,559 @@ export default function DepartmentEvaluations() {
 
             {/* View Details Modal for Completed/Returned evaluations */}
             <div className={`modal fade ${viewModalItem ? 'show d-block' : ''}`} tabIndex={-1} style={{ zIndex: 1050 }}>
-                <div className="modal-dialog modal-dialog-centered modal-lg">
-                    <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px', overflow: 'hidden' }}>
-                        <div className="modal-header bg-light border-bottom border-light-subtle px-4 py-3">
-                            <h5 className="modal-title fw-black text-dark d-flex align-items-center gap-2">
-                                <span className="material-symbols-outlined text-primary">description</span>
+                <div className="modal-dialog modal-dialog-centered">
+                    <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px', overflow: 'hidden' }}>
+                        <div className="modal-header border-bottom-0 pb-0 px-4 pt-4">
+                            <h5 className="modal-title fw-bold text-dark d-flex align-items-center gap-2" style={{ fontSize: '1.1rem' }}>
+                                <span className="material-symbols-outlined text-primary" style={{ fontSize: '24px' }}>description</span>
                                 Evaluation Record
                             </h5>
                             <button type="button" className="btn-close" onClick={() => setViewModalItem(null)}></button>
                         </div>
                         {viewModalItem && (
                             <div className="modal-body p-4">
-                                <div className="d-flex align-items-start gap-4 flex-wrap mb-4">
-                                    <div className="flex-fill">
-                                        <div className="d-flex align-items-center gap-2 mb-1">
-                                            <div className="fw-black text-dark" style={{ fontSize: '1.2rem' }}>{viewModalItem.report_name}</div>
-                                            <span className="status-badge" style={{
-                                                background: viewModalItem.status === 'Completed' ? '#dcfce7' : '#fee2e2',
-                                                color: viewModalItem.status === 'Completed' ? '#15803d' : '#b91c1c',
-                                                fontSize: '.7rem'
-                                            }}>{viewModalItem.status === 'Completed' ? 'Accepted' : 'Returned'}</span>
-                                        </div>
-                                        <div className="text-muted" style={{ fontSize: '.9rem' }}>Activity: {viewModalItem.activity_title}</div>
-                                        <div className="text-muted" style={{ fontSize: '.8rem', marginTop: '4px' }}>
-                                            Submitted By: <strong>{viewModalItem.staff_name}</strong> on {formatDate(viewModalItem.submitted_at)}
-                                        </div>
-                                    </div>
-                                    <div className="text-end">
-                                        <div className="text-dark fw-bold mb-1" style={{ fontSize: '.8rem', letterSpacing: '.05em' }}>REPORTED PROGRESS</div>
-                                        <div className="progress mx-auto" style={{ height: '8px', width: '120px', borderRadius: '4px' }}>
-                                            <div className="progress-bar bg-primary" style={{ width: `${viewModalItem.progress || 0}%` }}></div>
-                                        </div>
-                                        <div className="fw-black text-primary mt-1">{viewModalItem.progress || 0}%</div>
-                                    </div>
-                                </div>
-
+                                {/* Info Banner */}
                                 <div className="p-3 rounded-3 mb-4" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                    <div className="fw-bold text-dark mb-2" style={{ fontSize: '.85rem' }}>Report Summary</div>
-                                    <p className="mb-0 text-secondary" style={{ fontSize: '.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                        {viewModalItem.report_summary || 'No summary provided.'}
-                                    </p>
+                                    <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                                        <div className="flex-fill">
+                                            <div className="d-flex align-items-center gap-3 mb-2">
+                                                <div className="fw-bold text-dark" style={{ fontSize: '1.1rem' }}>{viewModalItem.report_name}</div>
+                                                <span className="status-badge" style={{
+                                                    background: viewModalItem.status === 'Completed' ? '#dcfce7' : '#fee2e2',
+                                                    color: viewModalItem.status === 'Completed' ? '#15803d' : '#b91c1c',
+                                                    fontSize: '.75rem',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '6px'
+                                                }}>{viewModalItem.status === 'Completed' ? 'Accepted' : 'Returned'}</span>
+                                            </div>
+                                            <div className="text-muted mb-1" style={{ fontSize: '0.85rem' }}>
+                                                <span className="material-symbols-outlined me-2" style={{ fontSize: '16px', verticalAlign: 'middle' }}>category</span>
+                                                {viewModalItem.activity_title}
+                                            </div>
+                                            <div className="text-muted" style={{ fontSize: '0.85rem' }}>
+                                                <span className="material-symbols-outlined me-2" style={{ fontSize: '16px', verticalAlign: 'middle' }}>person</span>
+                                                Submitted by <strong>{viewModalItem.staff_name}</strong>
+                                            </div>
+                                            {viewModalItem.task_type === 'kpi_driver' && (
+                                                <div className="mt-2 text-primary fw-black" style={{ fontSize: '0.9rem' }}>
+                                                    Achieved KPI : {viewModalItem.kpi_actual_value != null ? viewModalItem.kpi_actual_value : '—'}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="text-md-end mt-3 pt-3 border-top w-100 d-flex align-items-center justify-content-between">
+                                            <div className="text-dark fw-bold" style={{ fontSize: '.7rem', letterSpacing: '.05em' }}>PROGRESS</div>
+                                            <div className="d-flex align-items-center gap-3 flex-grow-1 mx-4">
+                                                <div className="progress flex-grow-1" style={{ height: '8px', borderRadius: '4px' }}>
+                                                    <div className="progress-bar bg-primary" style={{ width: `${viewModalItem.progress || 0}%` }}></div>
+                                                </div>
+                                                <div className="fw-black text-primary" style={{ fontSize: '1.1rem' }}>{viewModalItem.progress || 0}%</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <h6 className="fw-bold border-bottom pb-2 mb-3 mt-4 text-dark">Your Evaluation Data</h6>
-                                <div className="row g-4 align-items-center">
-                                    <div className="col-12 col-md-3 text-center">
-                                        <div className="score-ring shadow-sm mx-auto mb-2" style={{
-                                            width: '64px', height: '64px', borderRadius: '16px',
-                                            background: viewModalItem.status === 'Completed' ? '#dcfce7' : '#fee2e2',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '1.75rem', fontWeight: '900',
-                                            color: viewModalItem.status === 'Completed' ? '#16a34a' : '#dc2626',
-                                            border: `2px solid ${viewModalItem.status === 'Completed' ? '#bbf7d0' : '#fca5a5'}`
-                                        }}>
-                                            {viewModalItem.score || '-'}
-                                        </div>
-                                        <div className="d-flex gap-1 justify-content-center">
-                                            {[1, 2, 3, 4, 5].map(s => (
-                                                <span key={s} className="material-symbols-outlined" style={{
-                                                    fontSize: '14px',
-                                                    color: s <= (viewModalItem.score || 0) ? '#f59e0b' : '#e2e8f0',
-                                                    fontVariationSettings: "'FILL' 1"
-                                                }}>star</span>
-                                            ))}
-                                        </div>
-                                        <div className="fw-bold text-muted small mt-1">{viewModalItem.score ? `${viewModalItem.score}/5 Rating` : 'No Score'}</div>
+
+                                {/* Report Details */}
+                                <div className="mb-4">
+                                    <label className="form-label fw-semibold mb-2 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
+                                        <span className="material-symbols-outlined text-primary" style={{ fontSize: '18px' }}>subject</span>
+                                        Report Summary
+                                    </label>
+                                    <div className="p-3 rounded-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                        <p className="mb-0 text-secondary" style={{ fontSize: '0.9rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                                            {viewModalItem.report_summary || 'No summary provided.'}
+                                        </p>
                                     </div>
-                                    <div className="col-12 col-md-9">
-                                        <div className="p-3 rounded-3" style={{
-                                            background: viewModalItem.status === 'Completed' ? '#f0fdf4' : '#fff1f2',
-                                            borderLeft: `4px solid ${viewModalItem.status === 'Completed' ? '#22c55e' : '#ef4444'}`
-                                        }}>
-                                            <div className="fw-bold text-dark mb-1" style={{ fontSize: '.85rem' }}>Reviewer Comments</div>
-                                            <p className="mb-0 text-dark" style={{ fontSize: '.9rem', lineHeight: '1.6' }}>
-                                                {viewModalItem.reviewer_notes ? `"${viewModalItem.reviewer_notes}"` : 'No additional comments provided.'}
+                                </div>
+
+                                {/* Evaluation Section */}
+                                <div className="p-3 rounded-3" style={{ 
+                                    background: viewModalItem.status === 'Completed' ? '#f0fdf4' : '#fff1f2', 
+                                    border: `1px solid ${viewModalItem.status === 'Completed' ? '#dcfce7' : '#fee2e2'}` 
+                                }}>
+                                    <div className="row g-3 align-items-center">
+                                        <div className="col-4 text-center border-end">
+                                            <div className="fw-black text-dark" style={{ fontSize: '1.4rem', lineHeight: '1' }}>{viewModalItem.score ?? '-'}</div>
+                                            <div className="text-muted fw-bold mt-2" style={{ fontSize: '0.6rem', letterSpacing: '0.5px' }}>RATING</div>
+                                            <div className="fw-bold mt-2" style={{ 
+                                                fontSize: '0.8rem',
+                                                color: getRatingLabel(viewModalItem) === 'Complete' ? '#15803d' : (getRatingLabel(viewModalItem) === 'Not Done' ? '#64748b' : '#b45309')
+                                            }}>
+                                                {getRatingLabel(viewModalItem)}
+                                            </div>
+                                        </div>
+                                        <div className="col-8 ps-4">
+                                            <div className="fw-bold text-dark mb-2 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
+                                                <span className="material-symbols-outlined text-secondary" style={{ fontSize: '18px' }}>forum</span>
+                                                Feedback
+                                            </div>
+                                            <p className="mb-0 text-dark italic" style={{ fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                                {viewModalItem.reviewer_notes ? `"${viewModalItem.reviewer_notes}"` : 'No comments.'}
                                             </p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         )}
-                        <div className="modal-footer bg-light border-top border-light-subtle px-4 py-3">
-                            <button type="button" className="btn btn-secondary fw-bold px-4" style={{ borderRadius: '8px' }} onClick={() => setViewModalItem(null)}>Close</button>
-                        </div>
                     </div>
                 </div>
             </div>
 
+
             {/* Evaluate Modal for Pending evaluations */}
             <div className={`modal fade ${evaluateModalItem ? 'show d-block' : ''}`} tabIndex={-1} style={{ zIndex: 1050 }}>
-                <div className="modal-dialog modal-dialog-centered modal-lg">
-                    <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px', overflow: 'hidden' }}>
-                        <div className="modal-header bg-warning-subtle border-bottom border-warning-subtle px-4 py-3">
-                            <h5 className="modal-title fw-black text-dark d-flex align-items-center gap-2">
-                                <span className="material-symbols-outlined text-warning">rate_review</span>
+                <div className="modal-dialog modal-dialog-centered">
+                    <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px' }}>
+                        {/* Header */}
+                        <div className="modal-header border-bottom-0 pb-0 px-4 pt-4">
+                            <h5 className="modal-title fw-bold text-dark d-flex align-items-center gap-2" style={{ fontSize: '1.1rem' }}>
+                                <span className="material-symbols-outlined text-primary" style={{ fontSize: '24px' }}>rate_review</span>
                                 Evaluate Submission
                             </h5>
                             <button type="button" className="btn-close" onClick={() => setEvaluateModalItem(null)}></button>
                         </div>
+
                         {evaluateModalItem && (
-                            <div className="modal-body p-4">
-                                <div className="d-flex align-items-start gap-4 flex-wrap mb-4">
-                                    <div className="flex-fill">
-                                        <div className="d-flex align-items-center gap-2 mb-1">
-                                            <div className="fw-black text-dark" style={{ fontSize: '1.2rem' }}>{evaluateModalItem.report_name}</div>
-                                            <span className="status-badge" style={{ background: '#eff6ff', color: 'var(--mubs-blue)', fontSize: '.7rem' }}>Under Review</span>
-                                        </div>
-                                        <div className="text-muted" style={{ fontSize: '.9rem' }}>Activity: {evaluateModalItem.activity_title}</div>
-                                        <div className="text-muted" style={{ fontSize: '.8rem', marginTop: '4px' }}>
-                                            Submitted By: <strong>{evaluateModalItem.staff_name}</strong> on {formatDate(evaluateModalItem.submitted_at)}
-                                        </div>
-                                    </div>
-                                    <div className="text-end">
-                                        <div className="text-dark fw-bold mb-1" style={{ fontSize: '.8rem', letterSpacing: '.05em' }}>REPORTED PROGRESS</div>
-                                        <div className="progress mx-auto" style={{ height: '8px', width: '120px', borderRadius: '4px' }}>
-                                            <div className="progress-bar bg-primary" style={{ width: `${evaluateModalItem.progress || 0}%` }}></div>
-                                        </div>
-                                        <div className="fw-black text-primary mt-1">{evaluateModalItem.progress || 0}%</div>
-                                    </div>
-                                </div>
-
+                            <div className="modal-body p-4 pt-3">
+                                {/* Submission Info Banner */}
                                 <div className="p-3 rounded-3 mb-4" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                    <div className="fw-bold text-dark mb-2" style={{ fontSize: '.85rem' }}>Report Summary</div>
-                                    <p className="mb-0 text-secondary" style={{ fontSize: '.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                        {evaluateModalItem.report_summary || 'No summary provided.'}
-                                    </p>
+                                    <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                                        <div>
+                                            <div className="fw-bold text-dark mb-2" style={{ fontSize: '1.05rem' }}>
+                                                {evaluateModalItem.report_name}
+                                                <span className="badge ms-2 fw-semibold" style={{ background: '#eff6ff', color: 'var(--mubs-blue)', fontSize: '.75rem', verticalAlign: 'middle' }}>Pending</span>
+                                            </div>
+                                            <div className="text-muted mb-1" style={{ fontSize: '0.85rem' }}>
+                                                <span className="material-symbols-outlined me-2" style={{ fontSize: '16px', verticalAlign: 'middle' }}>category</span>
+                                                {evaluateModalItem.activity_title}
+                                            </div>
+                                            <div className="text-muted" style={{ fontSize: '0.85rem' }}>
+                                                <span className="material-symbols-outlined me-2" style={{ fontSize: '16px', verticalAlign: 'middle' }}>person</span>
+                                                By <strong>{evaluateModalItem.staff_name}</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {evaluateModalItem.report_summary && (
+                                        <div className="mt-3 pt-3 border-top border-light">
+                                            <div className="fw-semibold text-dark mb-1" style={{ fontSize: '0.8rem' }}>Summary</div>
+                                            <p className="mb-0 text-secondary" style={{ fontSize: '0.9rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                                                {evaluateModalItem.report_summary}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
 
-                                <h6 className="fw-bold border-bottom pb-2 mb-3 mt-4 text-dark">Submit Your Evaluation</h6>
-                                <div className="row g-4 align-items-center bg-light p-3 rounded-3">
-                                    <div className="col-12 col-md-4">
-                                        <div className="fw-bold text-dark mb-2 small">QUALITY SCORE (1–5)</div>
-                                        <div className="d-flex gap-2 bg-white d-inline-flex p-2 rounded-3 shadow-sm border border-light-subtle">
-                                            {[1, 2, 3, 4, 5].map(star => (
+                                {/* Evidence preview (attachments / links) */}
+                                <div className="mb-4">
+                                    <label className="form-label fw-semibold mb-2 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
+                                        <span className="material-symbols-outlined text-primary" style={{ fontSize: '18px' }}>attach_file</span>
+                                        Evidence
+                                    </label>
+                                    {parseEvidenceItems(evaluateModalItem.attachments).length === 0 ? (
+                                        <div className="text-muted" style={{ fontSize: '0.85rem' }}>
+                                            No evidence file or link attached for this submission.
+                                        </div>
+                                    ) : (
+                                        <div className="d-flex flex-wrap gap-3">
+                                            {parseEvidenceItems(evaluateModalItem.attachments).map((ev, idx) => (
                                                 <button
-                                                    key={star}
-                                                    onClick={() => handleScore(evaluateModalItem.id, star)}
-                                                    className="btn p-0 border-0"
-                                                    style={{
-                                                        color: star <= (scores[evaluateModalItem.id] || 0) ? '#f59e0b' : '#e2e8f0',
-                                                        transition: 'color 0.2s',
-                                                        outline: 'none',
-                                                        boxShadow: 'none'
+                                                    key={idx}
+                                                    type="button"
+                                                    className="btn btn-outline-primary d-inline-flex align-items-center gap-2 px-3"
+                                                    style={{ borderRadius: '8px', fontSize: '0.85rem' }}
+                                                    onClick={() => {
+                                                        try {
+                                                            window.open(ev.url, '_blank', 'noopener,noreferrer');
+                                                        } catch (e) {
+                                                            console.error('Error opening evidence url', e);
+                                                        }
+                                                        setEvidenceOpened(prev => ({ ...prev, [evaluateModalItem.id]: true }));
                                                     }}
                                                 >
-                                                    <span className="material-symbols-outlined" style={{ fontSize: '28px', fontVariationSettings: "'FILL' 1" }}>star</span>
+                                                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>visibility</span>
+                                                    {ev.label}
                                                 </button>
                                             ))}
                                         </div>
-                                        <div className="text-muted small mt-2" style={{ fontSize: '.75rem' }}>
-                                            {scores[evaluateModalItem.id] ? `Rating: ${scores[evaluateModalItem.id]}/5` : 'Required to Mark Completed'}
+                                    )}
+                                </div>
+                                {/* Performance rating: Complete 2 pts, Incomplete 1 pt, Not Done 0 pts */}
+                                <div className="row g-4">
+                                    <div className="col-12">
+                                        <label className="form-label fw-semibold mb-2" style={{ fontSize: '0.85rem' }}>
+                                            Performance rating <span className="text-danger">*</span>
+                                        </label>
+                                        <div className="d-flex gap-3">
+                                            {(['Complete', 'Incomplete', 'Not Done'] as const).map(opt => (
+                                                <div 
+                                                    key={opt}
+                                                    onClick={() => setSelectedRating(prev => ({ ...prev, [evaluateModalItem.id]: opt }))}
+                                                    className="flex-fill text-center p-3 rounded-3 cursor-pointer border shadow-sm"
+                                                    style={{
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.9rem',
+                                                        fontWeight: 'bold',
+                                                        transition: 'all 0.2s',
+                                                        borderColor: selectedRating[evaluateModalItem.id] === opt ? 'var(--mubs-blue)' : '#e2e8f0',
+                                                        background: selectedRating[evaluateModalItem.id] === opt ? 'var(--mubs-blue)' : '#fff',
+                                                        color: selectedRating[evaluateModalItem.id] === opt ? '#fff' : '#475569',
+                                                        borderRadius: '12px'
+                                                    }}
+                                                >
+                                                    {opt === 'Complete' ? 'Complete (2)' : opt === 'Incomplete' ? 'Not Complete (1)' : 'Not Done (0)'}
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
-                                    <div className="col-12 col-md-8">
-                                        <div className="fw-bold text-dark mb-2 small">EVALUATOR COMMENTS</div>
+
+                                    {/* KPI achieved value: Visible for KPI-Driver tasks */}
+                                    {evaluateModalItem.task_type === 'kpi_driver' && (
+                                        <div className="col-12">
+                                            <label className="form-label fw-semibold mb-2 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
+                                                <span className="material-symbols-outlined text-primary" style={{ fontSize: '18px' }}>analytics</span>
+                                                Achieved value
+                                            </label>
+                                            <div className="d-flex align-items-center gap-4">
+                                                <input
+                                                    type="number"
+                                                    className="form-control fw-bold border-primary-subtle shadow-sm px-3"
+                                                    min={0}
+                                                    step="any"
+                                                    placeholder="0"
+                                                    value={kpiActualValues[evaluateModalItem.id] ?? ''}
+                                                    onChange={(e) => setKpiActualValues(prev => ({ ...prev, [evaluateModalItem.id]: e.target.value }))}
+                                                    style={{ maxWidth: '120px', borderRadius: '10px', fontSize: '1rem' }}
+                                                />
+                                                {evaluateModalItem.kpi_actual_value != null && (
+                                                    <div className="text-muted border-start ps-3 py-1">
+                                                        <div style={{ fontSize: '.65rem', fontWeight: 'bold' }}>STAFF ENTERED:</div>
+                                                        <div className="text-dark fw-black" style={{ fontSize: '1rem' }}>{evaluateModalItem.kpi_actual_value}</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Comment - required when Incomplete */}
+                                    <div className="col-12">
+                                        <label className="form-label fw-semibold mb-2" style={{ fontSize: '0.85rem' }}>
+                                            Reviewer Feedback {selectedRating[evaluateModalItem.id] === 'Incomplete' && <span className="text-danger">*</span>}
+                                        </label>
                                         <textarea
-                                            className="form-control border-light-subtle shadow-sm"
+                                            className="form-control shadow-sm"
                                             rows={3}
-                                            placeholder="Provide constructive feedback, notes, or instructions for revision..."
+                                            placeholder={selectedRating[evaluateModalItem.id] === 'Incomplete' ? 'Required for Incomplete. Explain why...' : 'Optional feedback...'}
                                             value={comments[evaluateModalItem.id] || ''}
                                             onChange={(e) => handleComment(evaluateModalItem.id, e.target.value)}
-                                            style={{ borderRadius: '10px', fontSize: '.9rem' }}
+                                            style={{ borderRadius: '10px', fontSize: '.9rem', resize: 'none' }}
                                         ></textarea>
                                     </div>
                                 </div>
                             </div>
                         )}
-                        <div className="modal-footer bg-light border-top border-light-subtle px-4 py-3 d-flex justify-content-between">
+
+                        {/* Footer: Submit and Cancel */}
+                        <div className="modal-footer bg-light border-top-0 py-3 px-4 d-flex justify-content-end align-items-center gap-2">
                             <button
-                                className="btn btn-outline-danger fw-bold px-4 d-flex align-items-center gap-2"
-                                style={{ borderRadius: '8px' }}
-                                onClick={() => evaluateModalItem && handleSubmitEvaluation(evaluateModalItem.id, 'Returned')}
+                                type="button"
+                                className="btn btn-primary fw-bold px-4 py-2 d-flex align-items-center gap-2 shadow-sm"
+                                style={{ borderRadius: '8px', fontSize: '.9rem', background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }}
+                                onClick={handleSubmitEvaluation}
+                                disabled={!evaluateModalItem || !selectedRating[evaluateModalItem.id]}
                             >
-                                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>reply</span>
-                                Return for Revision
-                            </button>
-                            <button
-                                className="btn btn-success fw-bold px-4 d-flex align-items-center gap-2 shadow-sm"
-                                style={{ borderRadius: '8px' }}
-                                onClick={() => evaluateModalItem && handleSubmitEvaluation(evaluateModalItem.id, 'Completed')}
-                            >
-                                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>check_circle</span>
-                                Mark as Completed
+                                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>send</span>
+                                Submit Evaluation
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Pending Evaluations Table */}
-            <div className="table-card mb-4 shadow-sm border-0" style={{ borderTop: '4px solid var(--mubs-yellow)' }}>
-                <div className="table-card-header" style={{ background: '#fffbeb', borderBottom: '1px solid #fef3c7' }}>
-                    <h5 className="mb-0 fw-black text-dark d-flex align-items-center gap-2">
-                        <span className="material-symbols-outlined text-warning" style={{ fontSize: '24px' }}>pending_actions</span>
-                        Pending Evaluations
-                        <span className="badge rounded-pill bg-warning text-dark ms-2" style={{ fontSize: '.75rem' }}>
-                            {data.pending.length} to review
-                        </span>
-                    </h5>
-                </div>
-                <div className="table-responsive">
-                    <table className="table mb-0 align-middle">
-                        <thead className="bg-light">
-                            <tr>
-                                <th className="ps-4">Staff</th>
-                                <th>Report / Task</th>
-                                <th>Submitted</th>
-                                <th>Status</th>
-                                <th className="pe-4 text-end">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.pending.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="text-center py-5 text-muted">
-                                        <span className="material-symbols-outlined d-block mb-2 text-warning" style={{ fontSize: '48px', opacity: .4 }}>task_alt</span>
-                                        All caught up! No pending evaluations.
-                                    </td>
-                                </tr>
-                            ) : (
-                                data.pending.map((e) => (
-                                    <tr key={e.id}>
-                                        <td className="ps-4">
-                                            <div className="d-flex align-items-center gap-2 py-1">
-                                                <div className="staff-avatar" style={{
-                                                    background: 'var(--mubs-blue)',
-                                                    width: '32px',
-                                                    height: '32px',
-                                                    borderRadius: '8px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    color: '#fff',
-                                                    fontWeight: 'bold',
-                                                    fontSize: '.75rem'
-                                                }}>
-                                                    {getInitials(e.staff_name)}
-                                                </div>
-                                                <span className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{e.staff_name}</span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{e.report_name}</div>
-                                            <div className="text-muted text-truncate" style={{ fontSize: '.75rem', maxWidth: '250px' }}>{e.activity_title}</div>
-                                        </td>
-                                        <td style={{ fontSize: '.8rem', color: '#64748b' }}>{formatDate(e.submitted_at)}</td>
-                                        <td>
-                                            <span className="status-badge" style={{ background: '#fef9c3', color: '#a16207', fontSize: '.65rem' }}>
-                                                {e.status}
-                                            </span>
-                                        </td>
-                                        <td className="pe-4 text-end">
-                                            <button
-                                                className="btn btn-sm btn-primary fw-bold py-1 px-3 d-inline-flex align-items-center gap-1 shadow-sm"
-                                                style={{ fontSize: '.74rem', borderRadius: '8px' }}
-                                                onClick={() => setEvaluateModalItem(e)}
-                                            >
-                                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>rate_review</span> Evaluate
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            {/* Combined Evaluations Table */}
+            {(() => {
+                const allEvaluations = [
+                    ...data.pending,
+                    ...data.completed
+                ];
 
-            {/* Recent Evaluations Table */}
-            <div className="table-card shadow-sm border-0 border-top border-4 border-primary">
-                <div className="table-card-header bg-white border-bottom py-3 px-4">
-                    <h5 className="mb-0 fw-black text-dark d-flex align-items-center gap-2">
-                        <span className="material-symbols-outlined text-primary">history_edu</span>
-                        Recent Evaluations
-                    </h5>
-                    <div className="ms-auto d-flex gap-2">
-                        <button
-                            className="btn btn-sm btn-outline-success fw-bold d-flex align-items-center gap-2 px-3"
-                            onClick={handleExportExcel}
-                        >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>table</span>
-                            Export Excel
-                        </button>
-                        <button
-                            className="btn btn-sm btn-outline-danger fw-bold d-flex align-items-center gap-2 px-3"
-                            onClick={handleExportPDF}
-                        >
-                            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>picture_as_pdf</span>
-                            Export PDF
-                        </button>
+                const filtered = allEvaluations.filter(e => {
+                    const matchesSearch = searchTerm === '' ||
+                        e.staff_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        e.report_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        e.activity_title.toLowerCase().includes(searchTerm.toLowerCase());
+
+                    const matchesStatus =
+                        statusFilter === 'All' ||
+                        (statusFilter === 'Pending' && data.pending.some(p => p.id === e.id)) ||
+                        (statusFilter === 'Complete' && e.status === 'Completed') ||
+                        (statusFilter === 'Incomplete' && (e.status === 'Incomplete' || e.status === 'Returned')) ||
+                        (statusFilter === 'Not Done' && e.status === 'Not Done');
+
+                    return matchesSearch && matchesStatus;
+                });
+
+                const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+                const safePage = Math.min(currentPage, totalPages);
+                const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+                const isPending = (e: Evaluation) => data.pending.some(p => p.id === e.id);
+
+                return (
+                    <div className="table-card shadow-sm">
+                        <div className="table-card-header">
+                            <h5 className="mb-0 d-flex align-items-center gap-2">
+                                <span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)' }}>grading</span>
+                                All Evaluations
+                                <span className="badge rounded-pill ms-1" style={{ background: '#eff6ff', color: 'var(--mubs-blue)', fontSize: '.75rem', fontWeight: 700 }}>
+                                    {filtered.length}
+                                </span>
+                            </h5>
+                            <div className="d-flex gap-2 flex-wrap align-items-center">
+                                {/* Search */}
+                                <div className="input-group input-group-sm" style={{ width: '190px' }}>
+                                    <span className="input-group-text bg-white border-end-0">
+                                        <span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#64748b' }}>search</span>
+                                    </span>
+                                    <input
+                                        type="text"
+                                        className="form-control border-start-0 ps-0"
+                                        placeholder="Search..."
+                                        value={searchTerm}
+                                        onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                                    />
+                                </div>
+                                {/* Status Filter */}
+                                <select
+                                    className="form-select form-select-sm"
+                                    style={{ width: '140px' }}
+                                    value={statusFilter}
+                                    onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+                                >
+                                    <option value="All">All Statuses</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Complete">Complete</option>
+                                    <option value="Incomplete">Incomplete</option>
+                                    <option value="Not Done">Not Done</option>
+                                </select>
+                                {/* Export buttons */}
+                                <button className="btn btn-sm btn-outline-success fw-bold d-flex align-items-center gap-1 px-3" onClick={handleExportExcel}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>table</span>
+                                    Excel
+                                </button>
+                                <button className="btn btn-sm btn-outline-danger fw-bold d-flex align-items-center gap-1 px-3" onClick={handleExportPDF}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>picture_as_pdf</span>
+                                    PDF
+                                </button>
+
+                                <div className="vr mx-1" style={{ opacity: 0.1 }}></div>
+
+                                <div className="btn-group border rounded-3 p-1 bg-light shadow-sm">
+                                    <button 
+                                        className={`btn btn-sm d-flex align-items-center gap-1 fw-bold ${viewMode === 'grid' ? 'btn-primary shadow-sm' : 'btn-light border-0'}`}
+                                        onClick={() => setViewMode('grid')}
+                                        style={{ borderRadius: '6px', fontSize: '0.75rem', transition: 'all 0.2s' }}
+                                    >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>dashboard</span>
+                                        Grid View
+                                    </button>
+                                    <button 
+                                        className={`btn btn-sm d-flex align-items-center gap-1 fw-bold ${viewMode === 'table' ? 'btn-primary shadow-sm' : 'btn-light border-0'}`}
+                                        onClick={() => setViewMode('table')}
+                                        style={{ borderRadius: '6px', fontSize: '0.75rem', transition: 'all 0.2s' }}
+                                    >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>table_rows</span>
+                                        Table View
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {viewMode === 'grid' ? (
+                            <div className="p-4" style={{ background: '#f8fafc' }}>
+                                <EvaluationCardGrid 
+                                    evaluations={paged} 
+                                    onEvaluate={setEvaluateModalItem} 
+                                    onView={setViewModalItem}
+                                    isPending={isPending}
+                                />
+                            </div>
+                        ) : (
+                            <div className="table-responsive">
+                                <table className="table mb-0 align-middle">
+                                    <thead className="bg-light">
+                                        <tr>
+                                            <th className="ps-4">Staff Member</th>
+                                            <th>Report</th>
+                                            <th>Strategic Activity</th>
+                                            <th>Date</th>
+                                            <th>Progress</th>
+                                            <th>Rating</th>
+                                            <th>Status</th>
+                                            <th className="pe-4 text-end">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {paged.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={8} className="text-center py-5 text-muted">
+                                                    <span className="material-symbols-outlined d-block mb-2" style={{ fontSize: '48px', opacity: 0.25 }}>grading</span>
+                                                    <span className="fw-semibold d-block" style={{ fontSize: '.9rem' }}>No evaluations found</span>
+                                                    <span style={{ fontSize: '.8rem' }}>Try adjusting your search or filter.</span>
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            paged.map(e => {
+                                                const pending = isPending(e);
+                                                const avatarBg = pending ? 'var(--mubs-blue)' : (e.status === 'Completed' ? '#10b981' : e.status === 'Not Done' ? '#64748b' : '#f59e0b');
+                                                return (
+                                                    <tr key={e.id}>
+                                                        <td className="ps-4">
+                                                            <div className="d-flex align-items-center gap-2 py-1">
+                                                                <div className="staff-avatar" style={{
+                                                                    background: avatarBg,
+                                                                    width: '34px', height: '34px', borderRadius: '10px',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                    color: '#fff', fontWeight: 'bold', fontSize: '.75rem', flexShrink: 0
+                                                                }}>
+                                                                    {getInitials(e.staff_name)}
+                                                                </div>
+                                                                <div className="fw-bold text-dark" style={{ fontSize: '.85rem' }}>{e.staff_name}</div>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{e.report_name}</div>
+                                                            <div className="text-muted" style={{ fontSize: '.72rem' }}>ID: #{e.id}</div>
+                                                        </td>
+                                                        <td>
+                                                            <span className="text-muted" style={{ fontSize: '.8rem' }}>{e.activity_title}</span>
+                                                        </td>
+                                                        <td>
+                                                            <div className="d-flex align-items-center gap-1 text-muted" style={{ fontSize: '.8rem' }}>
+                                                                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>{pending ? 'schedule' : 'calendar_today'}</span>
+                                                                {formatDate(e.submitted_at)}
+                                                            </div>
+                                                        </td>
+                                                        <td style={{ minWidth: '110px' }}>
+                                                            <div className="d-flex align-items-center gap-2">
+                                                                <div className="progress w-100" style={{ height: '6px', borderRadius: '10px' }}>
+                                                                    <div className="progress-bar" style={{
+                                                                        width: `${e.progress || 0}%`,
+                                                                        background: pending
+                                                                            ? ((e.progress || 0) > 70 ? '#10b981' : ((e.progress || 0) > 30 ? '#f59e0b' : '#3b82f6'))
+                                                                            : (e.status === 'Completed' ? '#10b981' : e.status === 'Not Done' ? '#64748b' : '#f59e0b'),
+                                                                        borderRadius: '10px'
+                                                                    }}></div>
+                                                                </div>
+                                                                <span className="small fw-bold" style={{ fontSize: '.75rem', whiteSpace: 'nowrap' }}>{e.progress || 0}%</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <span className="fw-semibold" style={{
+                                                                fontSize: '.85rem',
+                                                                color: getRatingLabel(e, pending) === 'Complete' ? '#15803d' : getRatingLabel(e, pending) === 'Not Done' ? '#64748b' : '#b45309'
+                                                            }}>
+                                                                {getRatingLabel(e, pending)}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            {pending ? (
+                                                                <span className="status-badge" style={{ background: '#fef9c3', color: '#a16207', fontSize: '0.7rem', padding: '4px 8px', borderRadius: '6px', fontWeight: '600' }}>
+                                                                    <span className="material-symbols-outlined me-1" style={{ fontSize: '12px', verticalAlign: 'middle' }}>hourglass_empty</span>
+                                                                    Pending
+                                                                </span>
+                                                            ) : (
+                                                                <span className="status-badge" style={{
+                                                                    background: e.status === 'Completed' ? '#dcfce7' : e.status === 'Not Done' ? '#f1f5f9' : '#fef3c7',
+                                                                    color: e.status === 'Completed' ? '#15803d' : e.status === 'Not Done' ? '#475569' : '#b45309',
+                                                                    fontSize: '0.7rem', padding: '4px 8px', borderRadius: '6px', fontWeight: '600'
+                                                                }}>
+                                                                    <span className="material-symbols-outlined me-1" style={{ fontSize: '12px', verticalAlign: 'middle' }}>
+                                                                        {e.status === 'Completed' ? 'check_circle' : e.status === 'Not Done' ? 'cancel' : 'feedback'}
+                                                                    </span>
+                                                                    {e.status === 'Completed' ? 'Complete' : e.status === 'Not Done' ? 'Not Done' : (e.status === 'Incomplete' ? 'Incomplete' : 'Returned')}
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="pe-4 text-end">
+                                                            <div className="d-flex justify-content-end gap-2">
+                                                                {pending ? (
+                                                                    <button
+                                                                        className="btn btn-sm btn-primary fw-bold d-inline-flex align-items-center gap-1 shadow-sm"
+                                                                        style={{ fontSize: '.75rem', background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }}
+                                                                        onClick={() => setEvaluateModalItem(e)}
+                                                                    >
+                                                                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>rate_review</span>
+                                                                        Evaluate
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        className="btn btn-sm btn-outline-secondary fw-bold d-inline-flex align-items-center gap-1"
+                                                                        style={{ fontSize: '.75rem' }}
+                                                                        onClick={() => setViewModalItem(e)}
+                                                                    >
+                                                                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>visibility</span>
+                                                                        View
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Footer: pagination + page count */}
+                        <div className="table-card-footer d-flex align-items-center justify-content-between flex-wrap gap-2" style={{ padding: '0.85rem 1.5rem', borderTop: '1px solid #f1f5f9' }}>
+                            <span className="text-muted" style={{ fontSize: '.8rem' }}>
+                                Showing <strong>{paged.length > 0 ? (safePage - 1) * pageSize + 1 : 0}</strong>–<strong>{Math.min(safePage * pageSize, filtered.length)}</strong> of <strong>{filtered.length}</strong> evaluations
+                            </span>
+                            <div className="d-flex align-items-center gap-3">
+                                {/* Rows per page */}
+                                <div className="d-flex align-items-center gap-2">
+                                    <span className="text-muted" style={{ fontSize: '.8rem', whiteSpace: 'nowrap' }}>Rows per page:</span>
+                                    <select
+                                        className="form-select form-select-sm"
+                                        style={{ width: '70px' }}
+                                        value={pageSize}
+                                        onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                                    >
+                                        <option value={5}>5</option>
+                                        <option value={10}>10</option>
+                                        <option value={20}>20</option>
+                                        <option value={50}>50</option>
+                                    </select>
+                                </div>
+                                {/* Page counter */}
+                                <span className="text-muted fw-semibold" style={{ fontSize: '.8rem', whiteSpace: 'nowrap' }}>
+                                    Page {safePage} of {totalPages}
+                                </span>
+                                {/* Prev / Next */}
+                                <div className="d-flex gap-1">
+                                    <button
+                                        className="btn btn-sm btn-light border d-flex align-items-center px-2"
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={safePage === 1}
+                                        style={{ fontSize: '.8rem' }}
+                                    >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>chevron_left</span>
+                                    </button>
+                                    <button
+                                        className="btn btn-sm btn-light border d-flex align-items-center px-2"
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={safePage === totalPages}
+                                        style={{ fontSize: '.8rem' }}
+                                    >
+                                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>chevron_right</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div className="table-responsive">
-                    <table className="table mb-0 align-middle">
-                        <thead className="bg-light">
-                            <tr>
-                                <th className="ps-4">Staff</th>
-                                <th>Report / Task</th>
-                                <th>Date Evaluated</th>
-                                <th>Score</th>
-                                <th>Outcome</th>
-                                <th className="pe-4 text-end">Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.completed.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="text-center py-5 text-muted">
-                                        No completed evaluations found.
-                                    </td>
-                                </tr>
-                            ) : (
-                                data.completed.map((e) => (
-                                    <tr key={e.id}>
-                                        <td className="ps-4">
-                                            <div className="d-flex align-items-center gap-2 py-1">
-                                                <div className="staff-avatar" style={{
-                                                    background: '#64748b',
-                                                    width: '28px',
-                                                    height: '28px',
-                                                    borderRadius: '6px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    color: '#fff',
-                                                    fontWeight: 'bold',
-                                                    fontSize: '.65rem'
-                                                }}>
-                                                    {getInitials(e.staff_name)}
-                                                </div>
-                                                <span className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{e.staff_name}</span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div className="fw-bold text-dark" style={{ fontSize: '.83rem' }}>{e.report_name}</div>
-                                        </td>
-                                        <td style={{ fontSize: '.8rem', color: '#64748b' }}>{formatDate(e.submitted_at)}</td>
-                                        <td>
-                                            <span className="score-badge d-inline-flex align-items-center gap-1" style={{
-                                                background: e.status === 'Completed' ? '#dcfce7' : '#fee2e2',
-                                                color: e.status === 'Completed' ? '#15803d' : '#b91c1c',
-                                                fontSize: '.75rem',
-                                                padding: '2px 8px',
-                                                borderRadius: '6px',
-                                                fontWeight: 700
-                                            }}>
-                                                {[1, 2, 3, 4, 5].map(s => <span key={s} className="material-symbols-outlined" style={{
-                                                    fontSize: '10px',
-                                                    fontVariationSettings: "'FILL' 1",
-                                                    color: s <= (e.score || 0) ? '#f59e0b' : (e.status === 'Completed' ? '#bbf7d0' : '#fca5a5')
-                                                }}>star</span>)}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span className="status-badge" style={{
-                                                background: e.status === 'Completed' ? '#dcfce7' : '#fee2e2',
-                                                color: e.status === 'Completed' ? '#15803d' : '#b91c1c',
-                                                fontSize: '.65rem'
-                                            }}>{e.status === 'Completed' ? 'Accepted' : 'Returned'}</span>
-                                        </td>
-                                        <td className="pe-4 text-end">
-                                            <button
-                                                className="btn btn-sm btn-outline-secondary fw-bold py-1 px-3 d-inline-flex align-items-center gap-1 shadow-sm"
-                                                style={{ fontSize: '.74rem', borderRadius: '8px', background: '#fff' }}
-                                                onClick={() => setViewModalItem(e)}
-                                            >
-                                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>visibility</span> View
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                );
+            })()}
         </div>
     );
 }
+

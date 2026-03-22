@@ -30,26 +30,23 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen, onLogoutClick }: 
     { key: 'executive', href: '/principal?pg=executive', icon: 'space_dashboard', label: 'Executive Overview' },
     { key: 'strategic', href: '/principal?pg=strategic', icon: 'track_changes', label: 'Strategic Summary' },
     { key: 'analytics', href: '/principal?pg=analytics', icon: 'insert_chart', label: 'Performance Analytics' },
+    { key: 'proposals', href: '/principal?pg=proposals', icon: 'gavel', label: 'Committee proposals' },
     { key: 'reports', href: '/principal?pg=reports', icon: 'description', label: 'Reports' },
   ];
 
   const departmentHeadMenuItems = [
     { key: 'dashboard', href: '/department-head?pg=dashboard', icon: 'dashboard', label: 'Dashboard' },
     { key: 'activities', href: '/department-head?pg=activities', icon: 'track_changes', label: 'Strategic Activities' },
-    { key: 'tasks', href: '/department-head?pg=tasks', icon: 'task_alt', label: 'Tasks', badge: '3', badgeType: 'warning' },
-    { key: 'staff', href: '/department-head?pg=staff', icon: 'group', label: 'Staff & Warnings', badge: '2', badgeType: 'danger' },
-    { key: 'submissions', href: '/department-head?pg=submissions', icon: 'inbox', label: 'Submissions' },
+    { key: 'tasks', href: '/department-head?pg=tasks', icon: 'task_alt', label: 'Tasks' },
+    { key: 'staff', href: '/department-head?pg=staff', icon: 'group', label: 'Staff & Warnings' },
     { key: 'evaluations', href: '/department-head?pg=evaluations', icon: 'rate_review', label: 'Evaluations' },
   ];
 
   const staffMenuItems = [
     { key: 'dashboard', href: '/staff?pg=dashboard', icon: 'dashboard', label: 'Dashboard' },
     { key: 'tasks', href: '/staff?pg=tasks', icon: 'task_alt', label: 'My Tasks' },
-    { key: 'deadlines', href: '/staff?pg=deadlines', icon: 'schedule', label: 'Deadlines' },
-    { key: 'notifications', href: '/staff?pg=notifications', icon: 'notifications', label: 'Notifications' },
-    { key: 'submit', href: '/staff?pg=submit', icon: 'upload_file', label: 'Submit Report' },
-    { key: 'submissions', href: '/staff?pg=submissions', icon: 'history', label: 'My Submissions' },
-    { key: 'feedback', href: '/staff?pg=feedback', icon: 'rate_review', label: 'Feedback & Scores' },
+    { key: 'notifications', href: '/staff?pg=notifications', icon: 'notifications_active', label: 'Notifications & Deadlines' },
+    { key: 'submissions', href: '/staff?pg=submissions', icon: 'history', label: 'Submissions & Feedback' },
   ];
 
   const commMenuItems = [

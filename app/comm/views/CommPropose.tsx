@@ -22,7 +22,7 @@ export default function CommPropose() {
     const [pillar, setPillar] = useState('');
     const [committeeType, setCommitteeType] = useState('Other');
     const [positionAtCommittee, setPositionAtCommittee] = useState('');
-    const [priority, setPriority] = useState('Medium');
+
     const [description, setDescription] = useState('');
     const [kpi, setKpi] = useState('');
     const [suggestedUnit, setSuggestedUnit] = useState<number | ''>('');
@@ -67,7 +67,7 @@ export default function CommPropose() {
                     if (d.pillar) setPillar(d.pillar);
                     if (d.committeeType) setCommitteeType(d.committeeType);
                     if (d.positionAtCommittee !== undefined) setPositionAtCommittee(d.positionAtCommittee);
-                    if (d.priority) setPriority(d.priority);
+
                     if (d.description) setDescription(d.description);
                     if (d.kpi) setKpi(d.kpi);
                     if (d.suggestedUnit) setSuggestedUnit(d.suggestedUnit);
@@ -91,7 +91,7 @@ export default function CommPropose() {
             pillar,
             committeeType,
             positionAtCommittee,
-            priority,
+
             description,
             kpi,
             suggestedUnit: suggestedUnit || undefined,
@@ -116,7 +116,7 @@ export default function CommPropose() {
         setPillar('');
         setCommitteeType('Other');
         setPositionAtCommittee('');
-        setPriority('Medium');
+
         setDescription('');
         setKpi('');
         setSuggestedUnit('');
@@ -254,14 +254,7 @@ export default function CommPropose() {
                                     <label className="form-label fw-black text-dark small">Position at committee</label>
                                     <input type="text" className="form-control" placeholder="e.g. Secretary, Chair, Member" value={positionAtCommittee} onChange={(e) => setPositionAtCommittee(e.target.value)} />
                                 </div>
-                                <div className="col-md-6">
-                                    <label className="form-label fw-black text-dark small">Priority Level</label>
-                                    <select className="form-select" value={priority} onChange={(e) => setPriority(e.target.value)}>
-                                        <option value="High">High</option>
-                                        <option value="Medium">Medium</option>
-                                        <option value="Low">Low</option>
-                                    </select>
-                                </div>
+
                                 <div className="col-12">
                                     <label className="form-label fw-black text-dark small">Description / Rationale <span className="text-danger">*</span></label>
                                     <textarea className="form-control" rows={4} placeholder="Describe what this activity involves, why it is proposed, and what outcome it aims to achieve based on the committee's discussion..." value={description} onChange={(e) => setDescription(e.target.value)}></textarea>
@@ -491,15 +484,12 @@ export default function CommPropose() {
                                         </div>
                                     </div>
                                     <div className="row g-2 mb-2">
-                                        <div className="col-6">
-                                            <span className="text-muted fw-bold d-block mb-1">Priority</span>
-                                            <span className="text-dark">{priority}</span>
-                                        </div>
-                                        <div className="col-6">
+                                        <div className="col-12">
                                             <span className="text-muted fw-bold d-block mb-1">Meeting / Session Reference</span>
                                             <span className="text-dark">{meetingRef || '—'}</span>
                                         </div>
                                     </div>
+
                                     <div className="mb-2">
                                         <span className="text-muted fw-bold d-block mb-1">Description / Rationale</span>
                                         <div className="text-dark" style={{ whiteSpace: 'pre-wrap', maxHeight: '120px', overflowY: 'auto' }}>{description || '—'}</div>
@@ -527,9 +517,7 @@ export default function CommPropose() {
                                 </div>
                             </div>
                             <div className="modal-footer border-0 pt-0">
-                                <button type="button" className="btn btn-outline-secondary fw-bold" onClick={() => setShowReviewModal(false)}>
-                                    Back to Edit
-                                </button>
+
                                 <button type="button" className="btn fw-bold text-white px-4" style={{ background: '#7c3aed' }} onClick={submitProposal} disabled={isSubmitting}>
                                     <span className="material-symbols-outlined me-1" style={{ fontSize: '18px' }}>send</span>
                                     {isSubmitting ? 'Submitting...' : 'Confirm & Submit'}

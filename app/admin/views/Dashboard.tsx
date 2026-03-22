@@ -64,14 +64,22 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="alert alert-warning alert-strip alert-dismissible fade show mb-4 d-flex align-items-center gap-2" role="alert">
-        <span className="material-symbols-outlined">warning</span>
-        <div>
-          <strong>Attention:</strong> {stats.delayedActivities} strategic activities have exceeded their deadlines.
-          <a href="/admin?pg=tracking" className="alert-link"> Review now →</a>
+      {/* Hero banner */}
+      <div className="p-4 mb-4 rounded-3" style={{ background: 'linear-gradient(135deg, #1e40af 0%, var(--mubs-navy) 100%)', border: '1px solid rgba(147, 197, 253, 0.2)' }}>
+        <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
+          <div>
+            <div className="d-flex align-items-center gap-2 mb-1">
+              <span className="material-symbols-outlined" style={{ color: '#93c5fd', fontSize: '28px' }}>admin_panel_settings</span>
+              <div>
+                <div className="fw-black text-white" style={{ fontSize: '1.1rem' }}>Admin Dashboard</div>
+                <div style={{ fontSize: '.75rem', color: '#bfdbfe' }}>System overview and management</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <button type="button" className="btn-close ms-auto" data-bs-dismiss="alert"></button>
       </div>
+
+
 
       {/* Stat Cards */}
       <div className="row g-4 mb-4">

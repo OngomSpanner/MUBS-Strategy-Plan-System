@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
   --mubs-blue: #005696;
@@ -515,7 +513,7 @@ body {
 }
 
 .modal-header {
-  padding: 1.25rem 1.4rem;
+  padding: 0.85rem 1.25rem;
   background: #fff !important;
   color: #1e293b !important;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
@@ -549,12 +547,14 @@ body {
 }
 
 .modal-body {
-  padding: 1.25rem 1.4rem;
+  padding: 1rem 1.25rem;
   color: #1e293b;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .modal-footer {
-  padding: 1.25rem 1.4rem;
+  padding: 0.85rem 1.25rem;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
   background: #fff;
   border-radius: 0 0 12px 12px;

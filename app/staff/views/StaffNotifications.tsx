@@ -144,21 +144,6 @@ export default function StaffNotifications() {
                                     <div className="progress-bar-custom"><div className="progress-bar-fill" style={{ width: '100%', background: '#94a3b8' }}></div></div>
                                 </div>
                             </div>
-                            <div className="mt-4 p-3 rounded" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-                                <div className="fw-bold text-dark mb-1" style={{ fontSize: '.83rem' }}>Notification Settings</div>
-                                <div className="form-check form-switch mb-1">
-                                    <input className="form-check-input" type="checkbox" defaultChecked id="sw1" />
-                                    <label className="form-check-label" htmlFor="sw1" style={{ fontSize: '.78rem' }}>Email notifications</label>
-                                </div>
-                                <div className="form-check form-switch mb-1">
-                                    <input className="form-check-input" type="checkbox" defaultChecked id="sw2" />
-                                    <label className="form-check-label" htmlFor="sw2" style={{ fontSize: '.78rem' }}>Deadline reminders</label>
-                                </div>
-                                <div className="form-check form-switch">
-                                    <input className="form-check-input" type="checkbox" id="sw3" />
-                                    <label className="form-check-label" htmlFor="sw3" style={{ fontSize: '.78rem' }}>SMS alerts</label>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>

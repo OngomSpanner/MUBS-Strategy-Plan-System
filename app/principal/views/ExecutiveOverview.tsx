@@ -1,4 +1,4 @@
-'use client';
+ 'use client';
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
@@ -17,9 +17,11 @@ interface PrincipalData {
         totalUnits: number;
         riskAlerts: number;
         activeStaff: number;
+        facultiesCount?: number;
+        dueThisWeek?: number;
     };
     complianceByUnit: Array<{ id: number; parent_id: number | null; unit_type: string | null; department: string; progress: number }>;
-    riskAlerts: Array<{ id: number; title: string; department: string; daysPast?: number; daysLeft?: number; progress: number; status: string }>;
+    riskAlerts: Array<{ id: number; title: string; pillar?: string | null; department?: string | null; daysPast?: number; daysLeft?: number; progress: number; status: string }>;
     overdueActivities: Array<{ id: number; title: string; department: string; daysOverdue: number; progress: number }>;
 }
 
@@ -128,17 +130,11 @@ export default function ExecutiveOverview() {
         totalUnits: Number(stats?.totalUnits ?? 0),
         riskAlerts: Number(stats?.riskAlerts ?? 0),
         activeStaff: Number(stats?.activeStaff ?? 0),
+        facultiesCount: Number(stats?.facultiesCount ?? 0),
+        dueThisWeek: Number(stats?.dueThisWeek ?? 0),
     };
 
     const complianceList: Array<{ id: number; parent_id: number | null; unit_type: string | null; department: string; progress: number }> = Array.isArray(complianceByUnit) ? complianceByUnit : [];
-    const roots = complianceList.filter((u) => u.parent_id == null);
-    const childrenByParentId: Record<number, typeof complianceList> = {};
-    complianceList.forEach((u) => {
-        if (u.parent_id != null) {
-            if (!childrenByParentId[u.parent_id]) childrenByParentId[u.parent_id] = [];
-            childrenByParentId[u.parent_id].push(u);
-        }
-    });
 
     return (
         <div id="page-overview" className="page-section active-page">
@@ -198,27 +194,7 @@ export default function ExecutiveOverview() {
 
             {/* KPI Stat Cards */}
             <div className="row g-4 mb-4">
-                <div className="col-12 col-sm-6 col-xl-3">
-                    <StatCard
-                        icon="verified_user"
-                        label="Compliance Rate"
-                        value={`${safeStats.complianceRate}%`}
-                        badge="Live"
-                        badgeIcon="check_circle"
-                        color="green"
-                    />
-                </div>
-                <div className="col-12 col-sm-6 col-xl-3">
-                    <StatCard
-                        icon="running_with_errors"
-                        label="Delayed Activities"
-                        value={safeStats.delayed}
-                        badge={safeStats.delayed > 0 ? "Needs Attention" : "Clear"}
-                        badgeIcon={safeStats.delayed > 0 ? "warning" : "check"}
-                        color="red"
-                    />
-                </div>
-                <div className="col-12 col-sm-6 col-xl-3">
+                <div className="col-12 col-sm-6 col-xl">
                     <StatCard
                         icon="crisis_alert"
                         label="Risk Alerts"
@@ -228,7 +204,7 @@ export default function ExecutiveOverview() {
                         color="yellow"
                     />
                 </div>
-                <div className="col-12 col-sm-6 col-xl-3">
+                <div className="col-12 col-sm-6 col-xl">
                     <StatCard
                         icon="groups"
                         label="Active Staff"
@@ -238,13 +214,43 @@ export default function ExecutiveOverview() {
                         color="blue"
                     />
                 </div>
+                <div className="col-12 col-sm-6 col-xl">
+                    <StatCard
+                        icon="gavel"
+                        label="Proposals Pending"
+                        value={pendingProposals.length}
+                        badge={pendingProposals.length > 0 ? 'Review' : 'Clear'}
+                        badgeIcon={pendingProposals.length > 0 ? 'pending_actions' : 'check_circle'}
+                        color="blue"
+                    />
+                </div>
+                <div className="col-12 col-sm-6 col-xl">
+                    <StatCard
+                        icon="event"
+                        label="Due This Week"
+                        value={safeStats.dueThisWeek}
+                        badge="Deadlines"
+                        badgeIcon="schedule"
+                        color="yellow"
+                    />
+                </div>
+                <div className="col-12 col-sm-6 col-xl">
+                    <StatCard
+                        icon="account_balance"
+                        label="Faculties & Offices"
+                        value={safeStats.facultiesCount}
+                        badge="Units"
+                        badgeIcon="business"
+                        color="green"
+                    />
+                </div>
             </div>
 
             {pendingProposals.length > 0 && (
                 <div className="table-card mb-4" style={{ borderLeft: '4px solid #7c3aed' }}>
                     <div className="table-card-header">
                         <h5><span className="material-symbols-outlined me-2" style={{ color: '#7c3aed' }}>gavel</span>Committee proposals pending your review</h5>
-                        <Link href="/comm?pg=pending" className="btn btn-sm fw-bold text-white" style={{ background: '#7c3aed' }}>Review all</Link>
+                        <Link href="/principal?pg=proposals" className="btn btn-sm fw-bold text-white" style={{ background: '#7c3aed' }}>Review all</Link>
                     </div>
                     <div className="p-3">
                         <p className="text-muted small mb-2">Proposals from the committee (Academic Board, TMC, Council) awaiting Principal approval.</p>
@@ -272,9 +278,10 @@ export default function ExecutiveOverview() {
                             <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-red)' }}>crisis_alert</span>Active Risk Alerts</h5>
                             <span className="badge" style={{ background: 'var(--mubs-red)', fontSize: '.72rem' }}>{riskAlerts.length} Open</span>
                         </div>
+                        <p className="px-3 pt-2 mb-0 text-muted small">Strategic activities (top-level) overdue or due within 7 days.</p>
                         <div className="p-3">
                             {riskAlerts.length > 0 ? riskAlerts.map((risk, index) => (
-                                <div key={index} className="risk-item" style={{
+                                <div key={risk.id ?? index} className="risk-item" style={{
                                     background: risk.status === 'Critical' ? '#fff1f2' : '#fffbeb',
                                     borderLeft: `4px solid ${risk.status === 'Critical' ? '#e31837' : '#ffcd00'}`,
                                     padding: '12px',
@@ -288,7 +295,7 @@ export default function ExecutiveOverview() {
                                     <div className="flex-fill overflow-hidden">
                                         <div className="risk-title text-dark fw-bold" style={{ fontSize: '.85rem' }}>{risk.title}</div>
                                         <div className="risk-meta text-muted" style={{ fontSize: '.72rem' }}>
-                                            {risk.department} · {risk.daysPast ? `${risk.daysPast} days overdue` : `${risk.daysLeft} days left`} · {risk.progress}% complete
+                                            {[risk.pillar && `Strategic · ${risk.pillar}`, risk.department && `Owner: ${risk.department}`, risk.daysPast != null ? `${risk.daysPast} days overdue` : risk.daysLeft != null ? `${risk.daysLeft} days left` : null, `${risk.progress}% complete`].filter(Boolean).join(' · ')}
                                         </div>
                                         <span className="status-badge mt-1" style={{
                                             background: risk.status === 'Critical' ? '#fee2e2' : '#fef9c3',
@@ -307,54 +314,65 @@ export default function ExecutiveOverview() {
                     </div>
                 </div>
 
-                {/* Compliance & Institutional health */}
+                {/* Compliance summary — full faculty/department breakdown is on Strategic Summary */}
                 <div className="col-12 col-lg-7">
                     <div className="table-card mb-4">
                         <div className="table-card-header">
                             <h5><span className="material-symbols-outlined me-2" style={{ color: 'var(--mubs-blue)' }}>fact_check</span>Compliance by Department</h5>
+                            <Link href="/principal?pg=strategic" className="btn btn-sm btn-outline-primary fw-bold">View breakdown</Link>
                         </div>
                         <div className="p-4">
-                            {roots.map((root) => {
-                                const children = childrenByParentId[root.id] ?? [];
+                            {(() => {
+                                const units = complianceList.filter((u) => u.parent_id != null);
+                                const compliant = units.filter((u) => u.progress >= 75).length;
+                                const watch = units.filter((u) => u.progress >= 50 && u.progress < 75).length;
+                                const critical = units.filter((u) => u.progress < 50).length;
+                                const total = compliant + watch + critical || 1;
+                                const cPct = (compliant / total) * 100;
+                                const wPct = (watch / total) * 100;
+                                const rPct = (critical / total) * 100;
                                 return (
-                                    <div key={root.id} className="mb-4">
-                                        <div className="d-flex align-items-center gap-2 mb-2" style={{ padding: '8px 0', borderBottom: '1px solid #e2e8f0' }}>
-                                            <span className="material-symbols-outlined" style={{ color: 'var(--mubs-blue)', fontSize: '20px' }}>account_balance</span>
-                                            <span className="fw-bold text-dark" style={{ fontSize: '.9rem' }}>{root.department}</span>
-                                            <span className="text-muted small">({children.length} department{children.length !== 1 ? 's' : ''} / unit{children.length !== 1 ? 's' : ''})</span>
-                                        </div>
-                                        {children.length === 0 ? (
-                                            <div className="text-muted small ps-4 pb-2">No departments or units under this faculty/office.</div>
-                                        ) : (
-                                            <div className="ps-4 d-flex flex-column gap-2">
-                                                {children.map((unit) => (
-                                                    <div key={unit.id} className="compare-bar-wrap">
-                                                        <div className="d-flex justify-content-between align-items-center mb-1">
-                                                            <span className="compare-bar-label fw-bold" style={{ fontSize: '.8rem' }}>{unit.department}</span>
-                                                            <span className="compare-bar-pct fw-bold text-dark" style={{ fontSize: '.83rem' }}>{unit.progress}%</span>
-                                                        </div>
-                                                        <div className="progress" style={{ height: '8px', borderRadius: '4px', background: '#e2e8f0' }}>
-                                                            <div className="progress-bar" style={{
-                                                                width: `${Math.min(100, unit.progress)}%`,
-                                                                background: unit.progress >= 75 ? '#10b981' : (unit.progress >= 50 ? '#ffcd00' : '#e31837'),
-                                                                borderRadius: '4px'
-                                                            }}></div>
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                    <>
+                                        <div className="d-flex align-items-center gap-4 flex-wrap">
+                                            <div className="d-flex align-items-center justify-content-center position-relative" style={{ width: '120px', height: '120px', flexShrink: 0 }}>
+                                                <div
+                                                    style={{
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        borderRadius: '50%',
+                                                        background: `conic-gradient(#10b981 0% ${cPct}%, #ffcd00 ${cPct}% ${cPct + wPct}%, #e31837 ${cPct + wPct}% 100%)`
+                                                    }}
+                                                />
+                                                <div className="position-absolute d-flex flex-column align-items-center justify-content-center" style={{ width: '70px', height: '70px', borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                                                    <span className="fw-bold text-dark" style={{ fontSize: '1rem' }}>{total}</span>
+                                                    <span className="text-muted" style={{ fontSize: '.6rem' }}>units</span>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
+                                            <div className="d-flex flex-column gap-2">
+                                                <div className="d-flex align-items-center gap-2">
+                                                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#10b981' }} />
+                                                    <span style={{ fontSize: '.85rem', fontWeight: 600, color: '#475569' }}>≥75% Compliant</span>
+                                                    <span className="fw-bold text-dark">{compliant}</span>
+                                                </div>
+                                                <div className="d-flex align-items-center gap-2">
+                                                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#ffcd00' }} />
+                                                    <span style={{ fontSize: '.85rem', fontWeight: 600, color: '#475569' }}>50–74% Watch</span>
+                                                    <span className="fw-bold text-dark">{watch}</span>
+                                                </div>
+                                                <div className="d-flex align-items-center gap-2">
+                                                    <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#e31837' }} />
+                                                    <span style={{ fontSize: '.85rem', fontWeight: 600, color: '#475569' }}>&lt;50% Critical</span>
+                                                    <span className="fw-bold text-dark">{critical}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-muted small mt-3 mb-0">Faculty/office and department breakdown is on <Link href="/principal?pg=strategic" className="fw-bold">Strategic Summary</Link>.</p>
+                                    </>
                                 );
-                            })}
-                            {roots.length === 0 && (
-                                <div className="text-muted text-center py-3">No faculty or office data available.</div>
+                            })()}
+                            {complianceList.length === 0 && (
+                                <div className="text-muted text-center py-3">No compliance data available. <Link href="/principal?pg=strategic">Open Strategic Summary</Link>.</div>
                             )}
-                            <div className="mt-3 pt-3 border-top d-flex gap-3 flex-wrap">
-                                <div className="d-flex align-items-center gap-2"><div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#10b981' }}></div><span style={{ fontSize: '.75rem', color: '#475569', fontWeight: 600 }}>≥75% — Compliant</span></div>
-                                <div className="d-flex align-items-center gap-2"><div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#ffcd00' }}></div><span style={{ fontSize: '.75rem', color: '#475569', fontWeight: 600 }}>50–74% — Watch</span></div>
-                                <div className="d-flex align-items-center gap-2"><div style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#e31837' }}></div><span style={{ fontSize: '.75rem', color: '#475569', fontWeight: 600 }}>&lt;50% — Critical</span></div>
-                            </div>
                         </div>
                     </div>
 
@@ -473,9 +491,7 @@ export default function ExecutiveOverview() {
                                 )}
                             </div>
                             <div className="modal-footer border-0 pt-0">
-                                <button type="button" className="btn btn-outline-secondary" onClick={closeReviewModal} disabled={!!reviewSubmitting}>
-                                    Cancel
-                                </button>
+
                                 <button
                                     type="button"
                                     className="btn btn-danger"

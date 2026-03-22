@@ -28,7 +28,7 @@ export async function GET() {
                     (SELECT COUNT(*) FROM departments WHERE is_active = 1) as \`totalUnits\`,
                     (SELECT COUNT(*) FROM users WHERE status = 'Active') as \`activeStaff\`
                 FROM strategic_activities
-                WHERE parent_id IS NULL
+                WHERE parent_id IS NULL AND source IS NOT NULL
             `
     }) as any[];
 
@@ -44,7 +44,7 @@ export async function GET() {
                     d.name as department, 
                     ROUND(IFNULL(AVG(sa.progress), 0)) as progress
                 FROM departments d
-                LEFT JOIN strategic_activities sa ON d.id = sa.department_id AND sa.parent_id IS NULL
+                LEFT JOIN strategic_activities sa ON d.id = sa.department_id AND sa.parent_id IS NULL AND sa.source IS NOT NULL
                 WHERE d.is_active = 1
                 GROUP BY d.id, d.parent_id, d.unit_type, d.name
                 ORDER BY (d.parent_id IS NULL) DESC, d.name ASC
@@ -56,7 +56,7 @@ export async function GET() {
                 SELECT COUNT(*) as compliant FROM (
                     SELECT d.id, ROUND(IFNULL(AVG(sa.progress), 0)) as p
                     FROM departments d
-                    LEFT JOIN strategic_activities sa ON d.id = sa.department_id AND sa.parent_id IS NULL
+                    LEFT JOIN strategic_activities sa ON d.id = sa.department_id AND sa.parent_id IS NULL AND sa.source IS NOT NULL
                     WHERE d.is_active = 1
                     GROUP BY d.id
                     HAVING p >= 75
@@ -68,12 +68,31 @@ export async function GET() {
     const totalUnitsDept = Number(totalUnitsResult[0]?.c ?? 0);
     const complianceRate = totalUnitsDept ? Math.round((compliantCount / totalUnitsDept) * 100) : 0;
 
-    // 3. Active Risk Alerts (overdue or due within 7 days)
+    // Faculties & offices (root units only)
+    const facultiesResult = await query({
+      query: 'SELECT COUNT(*) as c FROM departments WHERE is_active = 1 AND parent_id IS NULL',
+      values: []
+    }) as any[];
+    const facultiesCount = Number(facultiesResult[0]?.c ?? 0);
+
+    // Activities due in the next 7 days (not completed, not yet overdue)
+    const dueThisWeekResult = await query({
+      query: `
+        SELECT COUNT(*) as c FROM strategic_activities
+        WHERE parent_id IS NULL AND source IS NOT NULL AND status != 'completed'
+        AND end_date IS NOT NULL AND end_date >= CURDATE() AND end_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+      `,
+      values: []
+    }) as any[];
+    const dueThisWeek = Number(dueThisWeekResult[0]?.c ?? 0);
+
+    // 3. Active Risk Alerts — strategic activities only (parent_id IS NULL), not department-level child tasks
     const riskAlerts = await query({
       query: `
                 SELECT 
                     sa.id,
                     sa.title,
+                    sa.pillar,
                     d.name as department,
                     sa.status,
                     sa.progress,
@@ -83,7 +102,7 @@ export async function GET() {
                     DATEDIFF(CURDATE(), sa.end_date) as daysPast
                 FROM strategic_activities sa
                 LEFT JOIN departments d ON sa.department_id = d.id
-                WHERE sa.parent_id IS NULL
+                WHERE sa.parent_id IS NULL AND sa.source IS NOT NULL
                 AND (sa.status = 'overdue' OR (sa.end_date IS NOT NULL AND sa.end_date < CURDATE()) OR (sa.status != 'completed' AND sa.end_date IS NOT NULL AND DATEDIFF(sa.end_date, CURDATE()) <= 7))
                 ORDER BY sa.end_date ASC
                 LIMIT 10
@@ -101,7 +120,7 @@ export async function GET() {
                     sa.progress
                 FROM strategic_activities sa
                 LEFT JOIN departments d ON sa.department_id = d.id
-                WHERE sa.parent_id IS NULL AND sa.end_date IS NOT NULL AND sa.end_date < CURDATE() AND sa.status != 'completed'
+                WHERE sa.parent_id IS NULL AND sa.source IS NOT NULL AND sa.end_date IS NOT NULL AND sa.end_date < CURDATE() AND sa.status != 'completed'
                 ORDER BY sa.end_date ASC
                 LIMIT 10
             `
@@ -117,6 +136,8 @@ export async function GET() {
       totalUnits: Number(row0?.totalUnits ?? 0),
       riskAlerts: riskAlerts.length,
       activeStaff: Number(row0?.activeStaff ?? 0),
+      facultiesCount,
+      dueThisWeek,
     };
 
     return NextResponse.json({
@@ -131,7 +152,8 @@ export async function GET() {
       riskAlerts: riskAlerts.map((r: any) => ({
         id: r.id,
         title: r.title,
-        department: r.department ?? '—',
+        pillar: r.pillar != null ? String(r.pillar) : null,
+        department: r.department ?? null,
         daysPast: r.daysPast != null ? Number(r.daysPast) : undefined,
         daysLeft: r.daysLeft != null ? Number(r.daysLeft) : undefined,
         progress: Number(r.progress ?? 0),

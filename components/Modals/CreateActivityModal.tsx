@@ -2,19 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap';
-import { STRATEGIC_PILLARS_2025_2030, CORE_OBJECTIVES_2025_2030 } from '@/lib/strategic-plan';
+import { STRATEGIC_PILLARS_2025_2030 } from '@/lib/strategic-plan';
 
 interface Activity {
   id?: number;
   title: string;
   strategic_objective: string;
   pillar: string;
-  core_objective?: string | null;
+
   department_id?: number | null;
   department_ids?: number[];
+  kpi_target_value?: number | null;
   target_kpi: string;
   status: string;
-  priority?: string;
   parent_id?: string | number | null;
   progress?: number;
   start_date: string;
@@ -22,6 +22,22 @@ interface Activity {
   timeline: string;
   description: string;
 }
+
+type FormState = {
+  title: string;
+  strategic_objective: string;
+  pillar: string;
+
+  assignToDepartment: boolean;
+  department_ids: number[];
+  kpi_target_value: number | string;
+  status: string;
+  parent_id: string;
+  start_date: string;
+  end_date: string;
+  timeline: string;
+  description: string;
+};
 
 interface CreateActivityModalProps {
   show: boolean;
@@ -31,16 +47,15 @@ interface CreateActivityModalProps {
   mode?: 'create' | 'edit' | 'reassign';
 }
 
-const BLANK = {
+const BLANK: FormState = {
   title: '',
   strategic_objective: '',
-  pillar: STRATEGIC_PILLARS_2025_2030[0],
-  core_objective: '' as string,
+  pillar: '',
+
   assignToDepartment: false,
   department_ids: [] as number[],
-  target_kpi: '',
+  kpi_target_value: '',
   status: 'pending',
-  priority: 'Medium',
   parent_id: '',
   start_date: '',
   end_date: '',
@@ -52,10 +67,11 @@ export default function CreateActivityModal({
   show, onHide, onActivityCreated, activity = null, mode = 'create'
 }: CreateActivityModalProps) {
 
-  const [formData, setFormData] = useState({ ...BLANK });
+  const [formData, setFormData] = useState<FormState>({ ...BLANK });
   const [parents, setParents] = useState<Activity[]>([]);
   const [departments, setDepartments] = useState<{ id: number; name: string; parent_id: number | null; unit_type: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     if (show) {
@@ -88,7 +104,14 @@ export default function CreateActivityModal({
     }
   };
 
-  const departmentUnitOptions = departments.filter(d => d.parent_id != null);
+  // Show all assignable departments/units: prefer units & departments (exclude faculty/office only if unit_type exists)
+  const departmentUnitOptions = departments.length === 0
+    ? []
+    : departments.some((d: any) => d.unit_type != null)
+      ? departments.filter((d: any) => d.unit_type === 'department' || d.unit_type === 'unit')
+      : departments.filter((d: any) => d.parent_id != null).length > 0
+        ? departments.filter((d: any) => d.parent_id != null)
+        : departments;
 
   // Populate form when editing
   useEffect(() => {
@@ -99,13 +122,12 @@ export default function CreateActivityModal({
       setFormData({
         title: activity.title || '',
         strategic_objective: activity.strategic_objective || '',
-        pillar: activity.pillar && STRATEGIC_PILLARS_2025_2030.includes(activity.pillar as any) ? activity.pillar : STRATEGIC_PILLARS_2025_2030[0],
-        core_objective: activity.core_objective || '',
+        pillar: activity.pillar || '',
+
         assignToDepartment: ids.length > 0,
         department_ids: ids,
-        target_kpi: activity.target_kpi || '',
+        kpi_target_value: activity.kpi_target_value != null ? activity.kpi_target_value : '',
         status: activity.status === 'in_progress' ? 'in_progress' : activity.status === 'completed' ? 'completed' : activity.status === 'overdue' ? 'overdue' : 'pending',
-        priority: activity.priority || 'Medium',
         parent_id: activity.parent_id ? String(activity.parent_id) : '',
         start_date: activity.start_date ? activity.start_date.slice(0, 10) : '',
         end_date: activity.end_date ? activity.end_date.slice(0, 10) : '',
@@ -115,6 +137,7 @@ export default function CreateActivityModal({
     } else if (!activity && show) {
       setFormData({ ...BLANK });
     }
+    if (show) setSubmitError('');
   }, [activity, show]);
 
   const isEdit = mode === 'edit' || mode === 'reassign';
@@ -122,6 +145,7 @@ export default function CreateActivityModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setSubmitError('');
     try {
       const url = isEdit ? `/api/activities/${activity!.id}` : '/api/activities';
       const method = isEdit ? 'PUT' : 'POST';
@@ -137,13 +161,17 @@ export default function CreateActivityModal({
         body: JSON.stringify(payload)
       });
 
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
         onActivityCreated();
         onHide();
         setFormData({ ...BLANK });
+      } else {
+        setSubmitError(data?.message || data?.detail || 'Failed to save activity');
       }
     } catch (error) {
       console.error('Error saving activity:', error);
+      setSubmitError('Failed to save activity');
     } finally {
       setSubmitting(false);
     }
@@ -162,7 +190,7 @@ export default function CreateActivityModal({
       : 'Create Activity';
 
   return (
-    <Modal show={show} onHide={onHide} centered size="lg">
+    <Modal show={show} onHide={onHide} centered size="lg" backdrop="static" keyboard={false}>
       <Modal.Header closeButton className="modal-header-mubs">
         <Modal.Title className="fw-bold d-flex align-items-center gap-2">
           <span className="material-symbols-outlined">{titleIcon}</span>
@@ -201,25 +229,18 @@ export default function CreateActivityModal({
                 value={formData.pillar}
                 onChange={(e) => setFormData({ ...formData, pillar: e.target.value })}
                 disabled={mode === 'reassign'}
+                required
               >
+                <option value="">Select a Strategic Pillar...</option>
+                {formData.pillar && !STRATEGIC_PILLARS_2025_2030.includes(formData.pillar as any) && (
+                  <option value={formData.pillar}>{formData.pillar} (Legacy)</option>
+                )}
                 {STRATEGIC_PILLARS_2025_2030.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </Form.Select>
             </div>
-            <div className="col-md-6">
-              <Form.Label className="fw-bold small">Core Objective</Form.Label>
-              <Form.Select
-                value={formData.core_objective}
-                onChange={(e) => setFormData({ ...formData, core_objective: e.target.value })}
-                disabled={mode === 'reassign'}
-              >
-                <option value="">— Select objective —</option>
-                {CORE_OBJECTIVES_2025_2030.map((o) => (
-                  <option key={o} value={o}>{o}</option>
-                ))}
-              </Form.Select>
-            </div>
+
 
             <div className="col-12">
               <Form.Check
@@ -259,50 +280,16 @@ export default function CreateActivityModal({
 
             {mode !== 'reassign' && (
               <>
-                <div className="col-md-6">
-                  <Form.Label className="fw-bold small">Target / KPI</Form.Label>
+                <div className="col-md-12">
+                  <Form.Label className="fw-bold small">KPI Target Value</Form.Label>
                   <Form.Control
-                    type="text"
-                    placeholder="e.g. 4 Labs upgraded"
-                    value={formData.target_kpi}
-                    onChange={(e) => setFormData({ ...formData, target_kpi: e.target.value })}
+                    type="number"
+                    placeholder="e.g. 100"
+                    value={formData.kpi_target_value}
+                    onChange={(e) => setFormData({ ...formData, kpi_target_value: e.target.value })}
                     required
                   />
-                </div>
-                <div className="col-md-6">
-                  <Form.Label className="fw-bold small">Status</Form.Label>
-                  <Form.Select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  >
-                    <option value="pending">Not Started</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="overdue">Delayed</option>
-                    <option value="completed">Completed</option>
-                  </Form.Select>
-                </div>
-                <div className="col-md-6">
-                  <Form.Label className="fw-bold small">Priority Level</Form.Label>
-                  <Form.Select
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                  >
-                    <option>High</option>
-                    <option>Medium</option>
-                    <option>Low</option>
-                  </Form.Select>
-                </div>
-                <div className="col-md-6">
-                  <Form.Label className="fw-bold small">Parent Activity (Optional)</Form.Label>
-                  <Form.Select
-                    value={formData.parent_id}
-                    onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
-                  >
-                    <option value="">No Parent (Standalone)</option>
-                    {parents.map(p => (
-                      <option key={p.id} value={p.id}>{p.title}</option>
-                    ))}
-                  </Form.Select>
+                  <Form.Text className="text-muted small">This is the numerical target for progress measurement.</Form.Text>
                 </div>
                 <div className="col-md-6">
                   <Form.Label className="fw-bold small">Start Date</Form.Label>
@@ -335,11 +322,14 @@ export default function CreateActivityModal({
               </>
             )}
           </div>
+          {submitError && (
+            <div className="alert alert-danger mt-3 mb-0 py-2 px-3 small" role="alert">
+              {submitError}
+            </div>
+          )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="light" onClick={onHide} disabled={submitting}>
-            Cancel
-          </Button>
+
           <Button
             type="submit"
             style={{ background: 'var(--mubs-blue)', borderColor: 'var(--mubs-blue)' }}

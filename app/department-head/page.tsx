@@ -4,7 +4,6 @@ import DepartmentHeadDashboard from './views/DepartmentHeadDashboard';
 import DepartmentStrategicActivities from './views/DepartmentStrategicActivities';
 import DepartmentTasks from './views/DepartmentTasks';
 import DepartmentStaff from './views/DepartmentStaff';
-import DepartmentSubmissions from './views/DepartmentSubmissions';
 import DepartmentEvaluations from './views/DepartmentEvaluations';
 
 interface DepartmentHeadPageProps {
@@ -25,8 +24,6 @@ export default async function DepartmentHeadPage({ searchParams }: DepartmentHea
                 return <DepartmentTasks initialActivity={activityParam} initialAssignee={assigneeParam} />;
             case 'staff':
                 return <DepartmentStaff />;
-            case 'submissions':
-                return <DepartmentSubmissions />;
             case 'evaluations':
                 return <DepartmentEvaluations />;
             case 'dashboard':
