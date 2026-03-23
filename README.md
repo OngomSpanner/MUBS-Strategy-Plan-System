@@ -1,6 +1,6 @@
-# Strategic Planning System (SPS)
+# Strategic Plan System (SPS)
 
-The Strategic Planning System (SPS) is a comprehensive web application built to streamline institutional planning, activity tracking, committee proposals, and performance reporting. Designed for educational or organizational institutions, it provides role-based access for streamlined governance, from the Principal level to individual staff members.
+The Strategic Plan System (SPS) is a comprehensive web application built to streamline institutional planning, activity tracking, committee proposals, and performance reporting. Designed for educational or organizational institutions, it provides role-based access for streamlined governance, from the Principal level to individual staff members.
 
 ## Features
 
